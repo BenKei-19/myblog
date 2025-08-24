@@ -1,4 +1,4 @@
-# Site settings
+  # Site settings
 title: "My Blog"
 email: "hieup3503@gmail.com"
 description: >- # Hiển thị trong Google search & feed
@@ -23,6 +23,7 @@ kramdown:
   input: GFM
   auto_ids: true
   syntax_highlighter: rouge
+  math_engine: mathjax
 
 # Optional settings
 show_excerpts: true 
