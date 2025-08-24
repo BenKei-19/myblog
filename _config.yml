@@ -1,8 +1,7 @@
 # Site settings
 title: "My Blog"
-email: "your-email@example.com"
+email: "hieup3503@gmail.com"
 description: >- # Hiển thị trong Google search & feed
-  Đây là blog của tôi viết về machine learning và code.
 baseurl: "/myblog" # repo name nếu deploy ở username.github.io/myblog
 url: "https://benkei-19.github.io" # thay bằng domain hoặc GitHub Pages URL của bạn
 
