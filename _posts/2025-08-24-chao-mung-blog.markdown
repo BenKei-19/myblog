@@ -6,7 +6,7 @@ date: 2025-08-24
 
 Đây là bài viết đầu tiên của mình 🚀.
 
-Giả sử hàm số \(||\mathbf{x}||_{\alpha}\) là một norm bất kỳ của vector \(\mathbf{x}\).
+Giả sử hàm số \( \| \mathbf{x} \|_{\alpha} \) là một norm bất kỳ của vector \( \mathbf{x} \).
 
 Ứng với norm này, định nghĩa norm tương ứng cho ma trận \(\mathbf{A}\):
 
