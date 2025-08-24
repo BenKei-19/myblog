@@ -1,5 +1,5 @@
 ---
-layout: my-default
+layout: my-post
 title: "Chào mừng blog mới"
 date: 2025-08-24
 ---
