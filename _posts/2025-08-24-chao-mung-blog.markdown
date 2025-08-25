@@ -6,7 +6,7 @@ date: 2025-08-24
 
 Đây là bài viết đầu tiên của mình 🚀.
 
-Đây là inline: {% raw %}$\|\mathbf{x}\|_\alpha${% endraw %}
+Đây là inline math: $\|\mathbf{x}\|_\alpha$
 
 Display math:
 
