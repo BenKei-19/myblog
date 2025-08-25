@@ -2,15 +2,10 @@
 layout: my-post
 title: "Chào mừng blog mới"
 date: 2025-08-24
-summary: "Giải thích trực quan mô hình hồi quy tuyến tính và ký hiệu sử dụng trong series."
+summary: "Một chút giới thiệu về blog của mình"
 ---
 
-Một cách đơn giản nhất, chúng ta có thể thấy rằng: i) diện tích nhà càng lớn thì giá nhà càng cao; ii) số lượng phòng ngủ càng lớn thì giá nhà càng cao; iii) càng xa trung tâm thì giá nhà càng giảm. Một hàm số đơn giản nhất có thể mô tả mối quan hệ giữa giá nhà và 3 đại lượng đầu vào là:
+Hello xin chào các bạn :D. Đợt này do mình cũng nổi hứng với cũng không cóa việc gì làm nên mình cũng tạo thói quen viết blog xíu :> vừa để lưu lại những gì mình đã học điều này chắc sẽ giúp mình nhớ sâu hơn các kiến thức một xíu và nhỡ bạn nào cũng đang gặp khó khăn khi học về AI thì cũng có thể tham khảo xem bài của mình nha. :> mong các bạn sẽ ủng hộ và có vấn đề gì các bạn cứ email cho mình nhé. Cảm ơn các bạn rất nhiều ạ.
 
-Mối quan hệ giữa biến đầu ra và đầu vào có thể viết gọn: $y \approx f(\mathbf{x}) = \hat{y}$.
+![Ảnh của mình](/assets/images/Inosuke.jpg)
 
-$$ f(\mathbf{x}) = w_1 x_1 + w_2 x_2 + w_3 x_3 + w_0 \qquad (1) $$
-
-Trong đó, $w_1, w_2, w_3, w_0$ là các hằng số; $w_0$ còn được gọi là bias. Mối quan hệ $y \approx f(\mathbf{x})$ bên trên là tuyến tính (linear). Bài toán chúng ta đang làm là regression; đi tìm các hệ số tối ưu $\{w_1, w_2, w_3, w_0\}$ chính là bài toán Linear Regression.
-
-Chú ý 1: $y$ là giá trị thực của outcome (dựa trên số liệu thống kê chúng ta có trong tập training data), trong khi $\hat{y}$ là giá trị mà mô hình Linear Regression dự đoán được. Nhìn chung, $y$ và $\hat{y}$ là hai giá trị khác nhau do có sai số mô hình; tuy nhiên, chúng ta mong muốn sự khác biệt này rất nhỏ.
