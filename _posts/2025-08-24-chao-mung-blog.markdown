@@ -6,9 +6,9 @@ date: 2025-08-24
 
 Đây là bài viết đầu tiên của mình 🚀.
 
-Công thức inline: $ \|\mathbf{x}\|_\alpha $ hoặc \( \|\mathbf{x}\|_\alpha \).
+Đây là inline: {% raw %}$\|\mathbf{x}\|_\alpha${% endraw %}
 
-Công thức display:
+Display math:
 
 $$
 \|\mathbf{A}\|_\alpha = \max_{\mathbf{x}} \frac{\|\mathbf{Ax}\|_\alpha}{\|\mathbf{x}\|_\alpha}

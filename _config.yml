@@ -24,6 +24,10 @@ kramdown:
   auto_ids: true
   syntax_highlighter: rouge
   math_engine: mathjax
+  math_engine_opts:
+    preview: false
+  inline_math_delimiters: [['$', '$'], ['\\(', '\\)']]
+
 
 # Optional settings
 show_excerpts: true 

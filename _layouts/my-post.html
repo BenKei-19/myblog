@@ -1,5 +1,9 @@
 ---
 layout: post
 ---
+
 {% include mathjax.html %}
-{{ content }}
+
+<article class="post-content">
+  {{ content | markdownify }}
+</article>
