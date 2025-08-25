@@ -1,17 +1,8 @@
 ---
 layout: post
 ---
-
 {% include mathjax.html %}
 
 <article class="post-content">
-  {{ content | markdownify }}
+  {{ content }}
 </article>
-
-<script>
-  document.addEventListener("DOMContentLoaded", function() {
-    if (window.MathJax) {
-      MathJax.typesetPromise();
-    }
-  });
-</script>

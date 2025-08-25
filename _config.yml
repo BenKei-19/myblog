@@ -21,11 +21,7 @@ markdown: kramdown
 highlighter: rouge
 kramdown:
   input: kramdown
-  math_engine: mathjax
+  math_engine: null
   math_engine_opts:
     preview: false
-  inline_math_delimiters: [['$', '$'], ['\\(', '\\)']]
-
-
-# Optional settings
 show_excerpts: true 
