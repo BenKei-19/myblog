@@ -24,4 +24,4 @@ kramdown:
   math_engine: null
   math_engine_opts:
     preview: false
-show_excerpts: true 
+show_excerpts: false 

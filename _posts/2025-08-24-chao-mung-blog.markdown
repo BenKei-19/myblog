@@ -2,6 +2,7 @@
 layout: my-post
 title: "Chào mừng blog mới"
 date: 2025-08-24
+summary: "Giải thích trực quan mô hình hồi quy tuyến tính và ký hiệu sử dụng trong series."
 ---
 
 Một cách đơn giản nhất, chúng ta có thể thấy rằng: i) diện tích nhà càng lớn thì giá nhà càng cao; ii) số lượng phòng ngủ càng lớn thì giá nhà càng cao; iii) càng xa trung tâm thì giá nhà càng giảm. Một hàm số đơn giản nhất có thể mô tả mối quan hệ giữa giá nhà và 3 đại lượng đầu vào là:
