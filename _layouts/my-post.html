@@ -7,3 +7,11 @@ layout: post
 <article class="post-content">
   {{ content | markdownify }}
 </article>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    if (window.MathJax) {
+      MathJax.typesetPromise();
+    }
+  });
+</script>
