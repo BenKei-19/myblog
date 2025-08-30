@@ -9,7 +9,8 @@ summary: "Giới thiệu về KAN và sự phát triển của KAN so với MLP"
 **I. Giới thiệu đôi nét về KAN**  
 **II. Review: Multi-Layer Perceptron(MLP)**  
 **III. Kolmogorov–Arnold Networks(KAN)**  
-
+**IV. KAN vs MLP**
+**V. Chúc cậu sinh nhật vui vẻ:>**
 <div style="text-align: center; font-weight: bold; font-size: 20px"> I. Giới thiệu đôi nét về KAN </div>
 
 <div>
