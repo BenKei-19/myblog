@@ -4,13 +4,15 @@ title: "Kolmogorov–Arnold Networks(KAN) sự thay thế cho MultiLayer Percept
 date: 2025-08-26
 summary: "Giới thiệu về KAN và sự phát triển của KAN so với MLP"
 ---
+<div style="text-align: center; font-weight: bold; font-size: 20px"> Chúc cậu sinh nhật vui vẻ nha:> (1/9)</div>
+<hr>
 <div style="text-align: center; font-weight: bold; font-size: 20px"> Contents </div>
 
 **I. Giới thiệu đôi nét về KAN**  
 **II. Review: Multi-Layer Perceptron(MLP)**  
 **III. Kolmogorov–Arnold Networks(KAN)**  
-**IV. KAN vs MLP**
-**V. Chúc cậu sinh nhật vui vẻ:>**
+**IV. KAN vs MLP**  
+
 <div style="text-align: center; font-weight: bold; font-size: 20px"> I. Giới thiệu đôi nét về KAN </div>
 
 <div>
