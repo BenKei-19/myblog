@@ -1,5 +1,5 @@
   # Site settings
-title: "My Blog"
+title: "LucyLa"
 email: "hieup3503@gmail.com"
 description: >- # Hiển thị trong Google search & feed
 baseurl: "/myblog" # repo name nếu deploy ở username.github.io/myblog

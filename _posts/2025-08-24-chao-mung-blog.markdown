@@ -1,6 +1,6 @@
 ---
 layout: my-post
-title: "Chào mừng blog mới"
+title: "Xin chào các bạn đến với blog của mình :>"
 date: 2025-08-24
 summary: "Một chút giới thiệu về blog của mình"
 ---
