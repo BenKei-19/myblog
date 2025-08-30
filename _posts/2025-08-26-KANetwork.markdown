@@ -1,7 +1,7 @@
 ---
 layout: my-post
 title: "Kolmogorov–Arnold Networks(KAN) sự thay thế cho MultiLayer Perceptron?"
-date: 2025-08-26
+date: 2025-09-01
 summary: "Giới thiệu về KAN và sự phát triển của KAN so với MLP"
 ---
 <div style="text-align: center; font-weight: bold; font-size: 20px"> Chúc cậu sinh nhật vui vẻ nha:> (1/9)</div>
