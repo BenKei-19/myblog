@@ -4,7 +4,7 @@ title: "Kolmogorov–Arnold Networks(KAN) sự thay thế cho MultiLayer Percept
 date: 2025-09-01
 summary: "Giới thiệu về KAN và sự phát triển của KAN so với MLP"
 ---
-<div style="text-align: center; font-weight: bold; font-size: 20px"> Happy Birthday</div>
+<div style="text-align: center; font-weight: bold; font-size: 20px"> Happy Birthday To You</div>
 <hr>
 <div style="text-align: center; font-weight: bold; font-size: 20px"> Contents </div>
 
