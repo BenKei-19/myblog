@@ -1,7 +1,7 @@
 ---
 layout: my-post
 title: "Kolmogorov–Arnold Networks(KAN) sự thay thế cho MultiLayer Perceptron?"
-date: 2025-09-01 00:00:00 +0700
+date: 2025-09-01
 
 summary: "Giới thiệu về KAN và sự phát triển của KAN so với MLP"
 ---
