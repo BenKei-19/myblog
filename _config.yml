@@ -25,3 +25,4 @@ kramdown:
   math_engine_opts:
     preview: false
 show_excerpts: false 
+future: true
