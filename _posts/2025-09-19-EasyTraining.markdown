@@ -5,10 +5,9 @@ date: 2025-09-19
 
 summary: "Phương pháp để mình có thể sử dụng cũng như Fine-tunning AI-Model khi điều kiện phần cứng chưa đủ đáp ứng."
 ---
-
+<div style="text-align: center; font-weight: bold; font-size: 20px"> Happy Birthday SUCCESS </div>
+<hr/>
 <div style="text-align: center; font-weight: bold; font-size: 20px"> Contents </div>
-<h2>Happy Birth Day SUCCESS</h2>
-<hr./>
 **I. Giới thiệu bối cảnh**  
 **II. Cách sử dụng mô hình khi phần cứng không đáp ứng đủ (Knowledge Distillation)**  
 **III. Một số cách huấn luyện mô hình khi gặp khó khăn về không đủ phân cứng**  
