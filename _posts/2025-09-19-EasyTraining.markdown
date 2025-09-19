@@ -1,7 +1,7 @@
 ---
 layout: my-post
 title: "Một số phương pháo để huấn luyện cũng như là sử dụng nếu như phần cứng không đủ đáp ứng trong AI"
-date: 2025-09-10
+date: 2025-09-19
 
 summary: "Phương pháp để mình có thể sử dụng cũng như Fine-tunning AI-Model khi điều kiện phần cứng chưa đủ đáp ứng."
 ---
