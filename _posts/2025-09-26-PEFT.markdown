@@ -1,0 +1,279 @@
+---
+layout: my-post
+title: "Một số phương pháp để huấn luyện cũng như là sử dụng nếu như phần cứng không đủ đáp ứng trong AI (Part 2)"
+date: 2025-09-26
+
+summary: "Giới thiệu một số cách để huấn luyện mô hình một cách hiệu quả, tiết kiệm VRAM hơn"
+---
+
+
+祝 Ha Mii 生日快乐！在你新的一岁里，希望你有更多好运、平安和幸福。:> GPT 很荣幸赞助这次翻译。
+<hr>
+<div style="text-align: center; font-weight: bold; font-size: 20px"> Contents </div>
+<div style="font-weight: bold; font-size: 18px">III. Một số cách huấn luyện mô hình khi gặp khó khăn về không đủ phần cứng</div>
+<ul>
+  <li>LoRA
+    <ul>
+      <li>Concept of LoRA</li>
+      <li>LoRA and its variants</li>
+    </ul>
+  </li>
+  <li>QLoRA
+    <ul>
+      <li>Concept of QLoRA</li>
+      <li>Pros and cons</li>
+    </ul>
+  </li>
+</ul>
+<p> Như mình đã nói trong blog trước, càng ngày thì model càng tốt hơn vì lượng tham số càng ngày càng lớn lên. Điều này mô hình chung làm cho những doanh nghiệp, hoặc học sinh, sinh viên càng khó để fine-tuning một tác vụ nào đó dựa trên những mô hình đã được pre-train trước đó do số lượng VRAM memory bỏ ra quá lớn. Lúc này một số phương pháp được gọi là Parameter-Efficient Fine-Tuning (PEFT) ra đời để có thể giúp cho việc fine-tune dễ dàng hơn. Có rất nhiều cách mà các nhà khoa học đã phát triển tra, nhưng trong blog này, mình sẽ giới thiệu cho bạn vê LoRA, các biến thể của LoRA và cũng khá hiệu quả đó chính là QLoRA.
+<hr>
+<div style="text-align: center; font-weight: bold; font-size: 20px"> 1.  Low-Rank Adaptation (LoRA) </div>
+
+<ol type="I"> Đầu tiên với quá trình fine-tuning thông thường, giả sử với mô hình Llama-3.2-1B có 1 tỷ tham số, giả sử trong python các số được lưu dưới dạng float32, nghĩa là với mỗi một tham số ta cần đền 32 bits = 4 bytes mà ta có 1 tỷ tham số => tương đương với \( 4 * 10^{9} \) = 4GB tham số, chưa kể ta cần phải lưu các gradient, với mỗi tham số ta có 1 gradient tương ứng  = 4GB nữa, và còn cả Optimizer states giả sử với Adam, ta cần phải lưu thêm lưu thêm momentum (m) và variance (v) = 2 * 4GB = 8GB nữa, còn chưa kể các activation v,v. Lúc này lượng VRAM được cấp ở trên Google Colab cũng đã bị vượt quá rồi. Lúc này để giảm lượng tham số cần học đi chính là ý tưởng của LoRA.
+<li>
+Dưới đây là hình ảnh minh họa cho ý tưởng của LoRA:
+<figure style="text-align: center;">
+<img src="{{ site.baseurl }}/assets/images/LoRA.png" alt="LoRA" style="max-width: 100%; height: auto;">
+<figcaption><i>Nguồn: https://arxiv.org/pdf/2106.09685</i></figcaption>
+</figure>
+Từ hình vẽ trên ta nhận thấy rằng thay vì thay đổi trực tiếp trọng số của \( W_{0} \) (là trọng số mà khi gọi mô hình đã được pretrain về nhưng chưa có được fine-tune) ta sẽ thay đổi gián tiếp điều đó bằng cách \( W' = W_{0} + \Delta(W) \) <br>
+Trong đó \( W' \in \mathbb{R}^{d \times k} \), \( W_{0} \in \mathbb{R}^{d \times k} \) và \( \Delta W \in \mathbb{R}^{d \times k} \), ta tiếp tục phân tách \( \Delta W \) ra thành tích của các ma trận B và A nghĩa là \( \Delta W = B \times A \) trong đó 
+\( B \in \mathbb{R}^{d \times r} \) và \( A \in \mathbb{R}^{r \times k} \) và r \( \ll \) min(d, k). Nghĩa là lúc này ta có: <br>
+<p style="text-align:center"> \( W' = W_{0} + \Delta W = W_{0} + \underline{B \times A} \) </p>
+Và underline là các trainable và ta sex không huấn luyện trọng số ban đầu là \( W_{0} \). Ta nhận thấy rằng lúc này, số tham số cần phải huấn luyện sẽ là \( r \times (d + k) \ll (d \times k) \) vì do \( r \) rất nhỏ so với \( \min(d, k) \). <br>
+<p>
+Ví dụ: Giả sử ta có một ma trận trọng số \( W \in \mathbb{R}^{4096 \times 4096} \), đây là kích thước thường gặp trong các mô hình ngôn ngữ lớn.
+</p>
+
+<ul>
+  <li>
+    <b>Fine-tuning toàn bộ:</b>  
+    <p>
+    Số tham số trong \( W \) là:
+    </p>
+    <div style="text-align:center;">
+    \( 4096 \times 4096 = 16,777,216 \) tham số
+    </div>
+  </li>
+
+  <li>
+    <b>Fine-tuning với LoRA:</b>  
+    <p>
+    Giả sử ta chọn hạng thấp \( r = 8 \). Khi đó, số tham số cần huấn luyện là:
+    </p>
+    <div style="text-align:center;">
+    \( r \times (d + k) = 8 \times (4096 + 4096) = 65,536 \) tham số
+    </div>
+  </li>
+</ul>
+Lúc này ta nhận thấy rằng số tham số đã được giảm đi hơn 250 lần, lúc này các trạng thái ví dụ lưu về gradient hay các thứ khác được lưu vào GPU cũng sẽ giảm đi đáng kể. Một điều nữa khi bạn nhìn thấy ở bức ảnh minh họa về cách hoạt động của LoRA, ta có thể thấy lúc ban đầu, chúng ta sẽ khởi tạo ma trận B là 0, và ma trận \( A \sim \mathcal{N}(0, \sigma^2) \) là Normal Distribution. Điều này làm cho \( \Delta W = 0 \) tại thời điểm ban đầu.
+
+<br>
+<p style="color:red">Tiếp theo chúng ta cùng nhau bàn đến điểm mạnh và điểm yếu của LoRA.</p><br>
+<h4 style="color:red"> Điểm mạnh </h4>
+<ol>
+<li>
+Đầu tiên ta có thể nhận ra rằng, việc đóng băng (không huấn luyện trực tiếp) mà huấn luyện qua các ma trận, chính vì thế, chúng ta có thể linh hoạt trong nhiều tác vụ khác nhau, chúng ta có thể dễ dàng chia sẻ các adapters, trong quá trình inference thì ta có thể gộp (merge) các adapters (những phần thêm vào cho W cho một tác vụ cụ thể nào đó mà mình vừa huấn luyện ma trận A, B) vào với các trọng số trong mô hình ví dụ như Llama 3.2, v.v. Và ta chỉ cần lưu các adpaters với chỉ vài chục MB sẽ rất tiện lợi hơn trong việc lưu cả mô hình cực lớn cho với phương pháp fine-tuning thông thường.
+</li>
+<li>
+<span style="font-weight:bold;"> LoRA thường được áp dụng với các q, k, v, projection trong transformer </span> và mình có thể linh hoạt chọn những layer nào áp dụng cái này để chúng ta có thể tối ưu được chi phí cũng như hiệu quả của mô hình.
+</li>
+<li>
+Có thể kết hợp LoRA thêm một số phương pháp khác nữa ví dụ như QLoRA hay DoRA tôi chuẩn bị giới thiệu ngay dưới đây.
+</li>
+</ol>
+<h4 style="color:red"> Điểm yếu </h4>
+<ol>
+<li>
+Đầu tiên về việc chọn hệ số r ở trong LoRA, điều này khá quan trọng vì nó cũng sẽ ảnh hưởng đến tác vụ mà ta sẽ huấn luyên.
+</li>
+<li>
+Chúng ta sẽ sử dụng LoRA như một cách để giảm số lượng trọng số cần phải huấn luyện đi, điều này đồng nghĩa với việc mô hình sẽ không thể đạt được hiệu năng giống như full Fine-tuning.
+</li>
+</ol>
+<hr>
+<div style="text-align: center; font-weight: bold; font-size: 20px"> 1.1.  LoRA and its variants </div>
+LoRA được xuất hiện vào năm 2021, đến nay thì một số biến thể khác của LoRA đã được ra đời, thường là kết hợp LoRA với một hướng tiếp cận, hướng suy nghĩ khác của tác giả đối với việc Fine-Tuning.<br>
+<ol>
+<li>
+Đầu tiên tôi sẽ giới thiệu cho các bạn biến thể đầu tiên là <b>VeRA</b>.<br> Giải thích ngắn gọn thì trong LoRA, các B, A là khác biệt nhau ở mỗi layer mình chọn, nghĩa là B, A áp dụng cho layer 10 của transformer khác với B, A áp dụng cho layer 20 của transformer, nhưng đối với VeRA, thì các B,A này share weights với nhau, nghĩa là giống nhau toàn bộ khi áp dụng, và tác giả thêm vào hai hệ số Λb và Λd là hai vector đường chéo của ma trận cần huấn luyên. Nghĩa là lúc này ta sẽ có công thức là :
+\[
+h = W_{0}x + \Delta W x = W_{0}x + (\underline{\Lambda_{b}} B \underline{\Lambda_{d}} A)x
+\]
+Một điều quan trọng trong VeRA là ta không đi vào huấn luyện hai matrix B, A như với LoRA, ta sẽ chỉ huấn luyện hai vector ma trận đường chéo \( \Lambda_{b} \) và \( \Lambda_{d} \) hai vector này đóng vai trò giống như hai scale vector cho phép điều chỉnh tương ứng đối với từng layer cụ thể. Về việc khởi tạo hai ma trận A, B dựa theo Kaiming initialization, đặc biệt là biến thể Kaiming uniform (tôi sẽ có bài viết về cách khởi tạo này trong tương lai nhưng nó sẽ làm cho việc học trở nên smooth hơn), còn với \( \Lambda_{b} \) tác giả khởi tạo bằng 0 cũng như \( \Lambda_{d} \) được khởi tạo bằng một số rất nhỏ, trong paper tác giả cũng đã có thử nghiệm và rút ra được kết quả như trên. <br>
+Với cách này thì ta nhận thấy việc huấn luyện giảm từ hai ma trận A, B so với LoRA thành các vector đường chéo \( \Lambda_{b} \) và \( \Lambda_{d} \), giúp làm giảm mạnh lượng tham số huấn luyện mà không có sự thay đổi đáng kể về hiệu năng.
+</li>
+<li>
+Tiếp theo tôi sẽ giới thiệu khá cụ thể hơn về <b>DoRA</b> (:> tôi khá thích cái này hơn những cách bình thường vì nó giống với tên của tuyển thủ Doran đang thi đấu cho T1 tại thời điểm tôi viết blog này)<br>
+DoRA (Weight-Decomposed Low-Rank Adaptation) cũng là một cách tiếp cận khác để fine-tuning nâng cao hiệu năng kết hợp với LoRA. Đầu tiên vì do lượng tham số ít huấn luyện nên khi LoRA không đạt được hiệu năng cao giống như full fine-tuning là điều mà những nhà nghiên cứu cho rằng như thế. Nhưng đối với tác giả bài DoRA, tác giả thay đổi hướng tiếp cận bằng cách chia ma trận đã được pre-training ban đầu thành hướng (direction) và độ lớn (magnitude). Nghĩa là giả sử ma trận \( W_{0} \) là ma trận được pre training, tác giả biến đổi rằng: \[
+W_{0} = \|W_{0}\|_{c} \cdot \frac{W_{0}}{\|W_{0}\|_{c}} = m \cdot \frac{V}{\|V\|}
+\]
+Trong đó \(\|.\|_{c} \) là các vector-wise norm của ma trận với từng cột. <br>
+Lúc này khi thay đổi hướng tiếp cận biến đổi sang hướng và độ lớn, với phép đo:
+\[
+\Delta M_{\text{FT}}^{t} = \frac{\sum_{n=1}^{k} \left| m_{\text{FT}}^{n,t} - m_{0}^{n} \right|}{k}
+\]
+
+\[
+\Delta D_{\text{FT}}^{t} = \frac{\sum_{n=1}^{k} \Big( 1 - \cos \big( V_{\text{FT}}^{n,t}, W_{0}^{n} \big) \Big)}{k}
+\]
+Trong đó \( \Delta M_{\text{FT}}^{t} \) và \(\Delta D_{\text{FT}}^{t}\) biểu về sự khác biệt về độ lớn và hướng giữa \( W_{FT}\) và \( W_{0} \) là trọng số pre training với trọng số sau khi đã được fine-tuning cho một tác vụ nào đó tại step t, còn với phép \( cos(.,.) \) chính là hàm cosine similarity. Tác giả cũng dùng cùng với công thức đo tương tự để so sánh \(W_{LoRA}\) với \(W_{0}\) thì lúc này tác giả nhận ra rằng đối với fine-tuning, có sự đối lập giữa việc học của độ lớn và hướng, nghĩa là nếu hướng thay đổi ít hơn thì độ lớn sẽ có xu hướng thay đổi nhiều hơn. Điều này trái với việc học của LoRA, tác giả cho rằng vì điều này mà LoRA huấn luyện sẽ không được tốt bằng so với Full Fine-tuning, lúc này để cải thiện điều đó, tác giả muốn tạo ra một phương pháp mà có cách học về độ lớn và hướng có xu hướng giống với Full fine-tuning. DoRA đã ra đời vì lí do đó. Lúc này tác giả nghĩ ra cách update trọng số \( W' \) như sau:
+\[
+W' = \underline{m} \frac{V + \Delta V}{\lVert V + \Delta V \rVert_{c}}
+    = \underline{m} \frac{W_{0} + \underline{BA}}{\lVert W_{0} + \underline{BA} \rVert_{c}}
+\]
+Lúc này, những tham số ta cần học có m, B, A trong đó \( M \in \mathbb{R}^{1 \times k} \) được gọi là magnitude vector, còn \( V \in \mathbb{R}^{d \times k} \) là ma trận direction. \( B \in \mathbb{R}^{d \times r} \) và \( A \in \mathbb{R}^{r \times d} \) chính là ý tưởng của idea LoRA mình vừa nêu ra ở trên. <br>
+Để đi sâu hơn vào DoRA, chúng ta cùng đi vào gradient của DoRA, từ phương trình \( W' \) ở phía bên trên, ta có gradient của hàm Loss tương ứng với \( m \) và \( V' = V + \Delta V \) như sau: <br>
+Ta có: <br>
+\( V' = V + \Delta V \). <br>
+Giả sử: <br>
+\( q = \dfrac{V'}{\|V'\|_{c}} \) là vector đơn vị theo hướng \( V' \) (ở đây \( \|\cdot\|_{c} \) là chuẩn Euclid của vector \( V' \)). <br>
+\( W' = m q = m \dfrac{V'}{\|V'\|_{c}} \). <br>
+\( L \) là loss scalar. Ta biết \( \nabla_{W'} L \) (gradient của loss theo \( W' \)). <br>
+
+Ta cần tính \( \nabla_{V'} L \) và \( \nabla_{m} L \).
+
+<br>
+
+Từ \( W' = m q \) ta có
+\[
+\frac{\partial W'}{\partial m} = q = \frac{V'}{\|V'\|_{c}}.
+\]
+
+Áp dụng chain rule ta có:
+
+\[
+\nabla_{m} L = \frac{\partial L}{\partial m}
+= \frac{\partial L}{\partial W'} \frac{\partial W'}{\partial m} 
+= \nabla_{W'} L \frac{V'}{\|V'\|_{c}}.
+\]
+
+\[
+\boxed{
+\text{Đây chính là gradient của hàm Loss với biến $m$:}\\
+\quad \nabla_{m} L = \nabla_{W'} L \frac{V'}{\|V'\|_{c}}
+}
+\]
+
+
+
+Tiếp theo ta phải tìm \( \nabla_{V'} L \), ta nhận thấy rằng: <br>
+
+
+Ta có \( W' = m q(V') \) với \( q(V') = \dfrac{V'}{\|V'\|_{c}} \).  
+Áp dụng quy tắc chuỗi:
+
+\[
+\nabla_{V'} L 
+= \left( \frac{\partial W'}{\partial V'} \right)^{\top} \nabla_{W'} L 
+= m \left( \frac{\partial q}{\partial V'} \right)^{\top} \nabla_{W'} L.
+\]
+
+Vậy chỉ việc tìm Jacobian của phép chuẩn hoá \( q(V') \). <br>
+
+Với \( q = \dfrac{V'}{\|V'\|} \), ta có (một kết quả chuẩn trong giải tích vector):
+
+\[
+\frac{\partial q}{\partial V'} 
+= \frac{1}{\|V'\|} I - \frac{1}{\|V'\|_{c}^3} V' V'^{\top}.
+\]
+
+(Áp dụng: đạo hàm của \(V'\) là \(I\); đạo hàm của \( 1/\|V'\| \) liên quan tới \(-V' / \|V'\|_{c}^3\); tổng hợp cho ra dạng trên.)
+
+<br>
+
+Nhân với \(m\) và áp dụng lên \(\nabla_{W'} L\) ta được:
+
+\[
+\nabla_{V'} L 
+= m \left( \frac{1}{\|V'\|} I - \frac{1}{\|V'\|_{c}^3} V' V'^{\top} \right) \nabla_{W'} L.
+\]
+
+Rút \(\dfrac{m}{\|V'\|}\) chung:
+
+\[
+\nabla_{V'} L 
+= \frac{m}{\|V'\|} \left( I - \frac{V' V'^{\top}}{\|V'\|_{c}^2} \right) \nabla_{W'} L.
+\]
+
+
+\[
+\boxed{
+\text{Đây chính là gradient của hàm Loss với biến $V'$:}\\
+\quad \nabla_{V'} L 
+= \frac{m}{\|V'\|_{c}} \left( I - \frac{V' V'^{\top}}{\|V'\|_{c}^2} \right) \nabla_{W'} L.
+}
+\]
+Từ công thức trên, ta thấy \( I - \frac{V' V'^{\top}}{\|V'\|_{c}^2} \) đây chính là ma trận chiếu lên không gian trực giao với \( V' \) (orthogonal projection matrix), ma trận này loại bỏ thành phần song song với \( V' \) mà chỉ giữ lại thành phần vuông góc, vì vậy khi tính gradient của hàm Loss theo biến \( W' \) gradient chỉ cập nhật thay đổi theo hướng của vector chứ không hề thay đổi độ lớn. <br>
+Bên cạnh đó tác giả cũng đưa ra lời chứng minh của mình là vì sao DoRA thường có xu hướng học giống với lại Full Fine-tuning. Từ lúc này, để thống nhất với cách giải của tác giả, mình quy định viết bằng các chữ cái viết thường, đó chính là một vector cột trong ma trận đó.<br>
+Tác giả đưa ra scenarios là S1 và S2, trong đó S1 sẽ có hướng cập nhật \( \Delta D_{S1} \) nhỏ hơn với hướng cập nhật của S2 là \( \Delta D_{S2} \) và giả sử rằng \( \| \Delta w_{S1} \| = \| \Delta w_{S2} \| \)  <br>
+Và từ \( \Delta D_{S1} < \Delta D_{S2} \) điều này cho thấy rằng \(
+\left|\cos\!\bigl(\Delta w_{S1}, w'\bigr)\right|
+>
+\left|\cos\!\bigl(\Delta w_{S2}, w'\bigr)\right|
+\) (1). Ở đây tác giả chỉ đang muốn so sánh chúng có đang nằm trên đường thẳng hay không, chứ đang không xét về hướng của các vector, chính vì thế absolute function đã được sử dụng ở đây. <br>
+Tiếp theo, vì \(\Delta w \propto \nabla_{w'} L\) (dấu \( \propto \) nhằm chỉ là tỷ lệ thuận) ở đây, tác giả đang nói về phương của hai vector, chứ không nhắc về hướng, đây là điều cơ bản của quá trình gradient \( \Delta w = - \eta \nabla_{w'} L \) bỏ qua sự quan tâm về hướng, ta thấy rằng \( \Delta w \) chỉ khác về hướng và scale, còn lại sẽ giống về phương đối với \( \nabla_{w'} \). Chính vì thế sẽ có mối quan hệ góc giữa (\( \Delta w \), \( w' \)) với (\( \nabla_{w'} \), \( w' \)) là tổng của chúng bằng 180. Chính vì vậy mà:  <br>
+\begin{equation}
+\left|\cos\!\bigl(\Delta w ,\, w'\bigr)\right|
+=
+\left|\cos\!\bigl(\nabla_{w'}\mathcal{L},\, w'\bigr)\right|
+\tag{2}
+\end{equation}
+
+Từ (1) và (2) ta có:
+\begin{equation}
+\left|\cos\!\bigl(\nabla^{S1}_{w'}\mathcal{L},\, w'\bigr)\right|
+>
+\left|\cos\!\bigl(\nabla^{S2}_{w'}\mathcal{L},\, w'\bigr)\right|
+\tag{2}
+\end{equation}
+Với khởi tạo ban đầu của v là \( v_{0} \) và \( w' = w_{0}\) thì 
+\(
+\left|\cos\!\bigl(\nabla_{w'} L,\, w'\bigr)\right|
+= \left|\cos\!\bigl(\nabla_{w'} L,\, v'\bigr)\right|
+= \left|\cos\!\bigl(\nabla_{w'} L,\, v\bigr)\right|
+\). Áp dụng công thức của cosine similarity ta có 
+\[
+\cos\!\bigl(\nabla_{w'} \mathcal{L},\, v'\bigr)
+= \cos\!\bigl(\nabla_{w'} \mathcal{L},\, v\bigr)
+= \frac{\nabla_{w'} \mathcal{L} \cdot v}
+       {\|\nabla_{w'} \mathcal{L}\|\,\|v\|}
+\]
+Đặt \( m_{*} \) là scalar về độ lớn của vector \(w'\), lúc này gradient của hàm Loss theo \( m_{*} \) trở thành 
+\[
+\nabla_{m_*} \mathcal{L}
+= \frac{\nabla_{w'} \mathcal{L} \cdot v'}{\|v'\|}
+= \|\nabla_{w'} \mathcal{L}\| \cdot \cos\!\bigl(\nabla_{w'} \mathcal{L}, v\bigr)
+\]
+Và vì \( \| \Delta w_{S1} \| = \| \Delta w_{S2} \| \) nên là \(
+\left\| \nabla^{S1}_{w'} \mathcal{L} \right\|
+= 
+\left\| \nabla^{S2}_{w'} \mathcal{L} \right\|
+\)
+ , chính vì thế ta có 
+ \(
+\|\nabla_{w'}^{S1} \mathcal{L}\| \cdot \left| \cos(\nabla_{w'}^{S1} \mathcal{L}, v) \right|
+> \|\nabla_{w'}^{S2} \mathcal{L}\| \cdot \left| \cos(\nabla_{w'}^{S2} \mathcal{L}, v) \right|
+\) => \(
+\left| \nabla_{m_*}^{S1} \mathcal{L} \right| 
+> 
+\left| \nabla_{m_*}^{S2} \mathcal{L} \right|
+\) hay là độ lớn của S1 lớn hơn so với S2. <br>
+Tiếp theo ta sẽ bàn đến điểm mạnh và điểm yếu của DoRA:
+<ul>
+<li>
+Về điểm mạnh thì ta thấy tác giả đã nói trước đó là xu hướng học khá giống với full fine-tuning, ít tham số hơn (tác giả đã thực nghiệm với ít tham số r hơn, hiệu năng của DoRA vẫn tốt hơn so với LoRA), không gây độ trễ cho quá trình inference, có thể kết hợp với các biến thể khác của LoRA nữa
+</li>
+<li>
+Về điểm yếu thì tác giả đã chỉ ra rằng phải lưu nhiều tham số hơn so với LoRA, tác giả đã đề xuất không lưu \(
+  \| V + \Delta V \|
+\), điều này sẽ làm giảm độ chính xác của gradient xuống và có thể làm cho mô hình khó hội tụ hơn nhưng so với lợi ích mà DoRA mang lại là vẫn lớn hơn
+</li>
+</ul>
+</li>
+</ol>
+</li>
+Như vậy mình đã giới thiệu về LoRA và các biến thể của nó, để tránh bài quá dài, ở blog tiếp theo mình sẽ giới thiệu về QLoRA và kĩ thuật quantization. Cảm ơn các bạn đã theo dõi
+</ol>
+<hr>
+If you find something useful in the outline, I wish you greater success in your life, HaMi, and I wish you all the best.
