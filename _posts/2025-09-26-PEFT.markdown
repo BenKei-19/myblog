@@ -5,7 +5,9 @@ date: 2025-09-26
 
 summary: "Giới thiệu một số cách để huấn luyện mô hình một cách hiệu quả, tiết kiệm VRAM hơn"
 ---
-
+<video autoplay muted loop controls playsinline>
+  <source src="{{ site.baseurl }}/assets/images/HappyBirthdayVideo.mp4" type="video/mp4">
+</video>
 
 祝 Ha Mii 生日快乐！在你新的一岁里，希望你有更多好运、平安和幸福。:> GPT 很荣幸赞助这次翻译。
 <hr>
