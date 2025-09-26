@@ -42,7 +42,7 @@ Từ hình vẽ trên ta nhận thấy rằng thay vì thay đổi trực tiếp
 Trong đó \( W' \in \mathbb{R}^{d \times k} \), \( W_{0} \in \mathbb{R}^{d \times k} \) và \( \Delta W \in \mathbb{R}^{d \times k} \), ta tiếp tục phân tách \( \Delta W \) ra thành tích của các ma trận B và A nghĩa là \( \Delta W = B \times A \) trong đó 
 \( B \in \mathbb{R}^{d \times r} \) và \( A \in \mathbb{R}^{r \times k} \) và r \( \ll \) min(d, k). Nghĩa là lúc này ta có: <br>
 <p style="text-align:center"> \( W' = W_{0} + \Delta W = W_{0} + \underline{B \times A} \) </p>
-Và underline là các trainable và ta sex không huấn luyện trọng số ban đầu là \( W_{0} \). Ta nhận thấy rằng lúc này, số tham số cần phải huấn luyện sẽ là \( r \times (d + k) \ll (d \times k) \) vì do \( r \) rất nhỏ so với \( \min(d, k) \). <br>
+Và underline là các trainable và ta sẽ không huấn luyện trọng số ban đầu là \( W_{0} \). Ta nhận thấy rằng lúc này, số tham số cần phải huấn luyện sẽ là \( r \times (d + k) \ll (d \times k) \) vì do \( r \) rất nhỏ so với \( \min(d, k) \). <br>
 <p>
 Ví dụ: Giả sử ta có một ma trận trọng số \( W \in \mathbb{R}^{4096 \times 4096} \), đây là kích thước thường gặp trong các mô hình ngôn ngữ lớn.
 </p>
@@ -277,5 +277,15 @@ Về điểm yếu thì tác giả đã chỉ ra rằng phải lưu nhiều tham
 </li>
 Như vậy mình đã giới thiệu về LoRA và các biến thể của nó, để tránh bài quá dài, ở blog tiếp theo mình sẽ giới thiệu về QLoRA và kĩ thuật quantization. Cảm ơn các bạn đã theo dõi
 </ol>
+<div style="font-weight: bold; font-size: 18px">Reference</div>
+<a href="https://arxiv.org/pdf/2402.09353" target="_blank" rel="noopener">
+  DoRA Paper
+</a><br>
+<a href="https://arxiv.org/abs/2310.11454" target="_blank" rel="noopener">
+  VeRA Paper
+</a><br>
+<a href="https://arxiv.org/pdf/2106.09685" target="_blank" rel="noopener">
+  LoRA Paper
+</a><br>
 <hr>
 If you find something useful in the outline, I wish you greater success in your life, HaMi, and I wish you all the best.
