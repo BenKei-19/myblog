@@ -1,7 +1,7 @@
 ---
 layout: my-post
 title: "How to scale your models?"
-date: 2025-09-26
+date: 2025-10-28
 
 summary: "Let's learn about how TPUs/GPUs have high impact with your model's parameter."
 ---
