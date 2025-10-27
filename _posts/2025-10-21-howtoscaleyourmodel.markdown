@@ -311,10 +311,8 @@ summary: "Let's learn about how TPUs/GPUs have high impact with your model's par
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-// 🔒 Dùng biến môi trường từ GitHub Secret (khi site được build)
 const firebaseConfig = JSON.parse('{{ site.github.env.FIREBASE_CONFIG | escape }}');
 
-// Khởi tạo Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -342,7 +340,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // 🔥 Lấy dữ liệu từ Firestore
       try {
-        const ref = doc(db, "secrets", "birthday");
+        const ref = doc(db, "secrets", "text");
         const snap = await getDoc(ref);
         if (snap.exists()) {
           notice.textContent = snap.data().message;
