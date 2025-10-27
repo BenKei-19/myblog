@@ -311,7 +311,7 @@ summary: "Let's learn about how TPUs/GPUs have high impact with your model's par
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-const firebaseConfig = JSON.parse('{{ site.github.env.FIREBASE_CONFIG | escape }}');
+const firebaseConfig = JSON.parse('{{ site.firebase_config | escape }}');
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
