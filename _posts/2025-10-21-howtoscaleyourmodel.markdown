@@ -312,7 +312,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebas
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyC9gr2sjKXdqDNS8s2WUat-EObLeUUEAyM",
+  apiKey: "AIzaSyC9gr2sjKXdqDNS8s2WUat-EObLeUUEAyM",
   authDomain: "my-secret-text.firebaseapp.com",
   projectId: "my-secret-text",
 }
