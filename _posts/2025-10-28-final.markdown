@@ -6,11 +6,11 @@ date: 2025-10-28
 summary: "Let's learn about how TPUs/GPUs have high impact with your model's parameter."
 ---
 
-<div id="birthday-section" class="center">
+<!-- <div id="birthday-section" class="center">
   <input type="date" id="birthday-input" />
   <button id="save-birthday">Send</button>
   <p id="birthday-message"></p>
-</div>
+</div> -->
 
 <div id="main-content">
 <div style="text-align: center; font-weight: bold; font-size: 20px"> Contents </div>
@@ -307,7 +307,7 @@ summary: "Let's learn about how TPUs/GPUs have high impact with your model's par
 </div>
 </div>
 
-<script type="module">
+<!-- <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
@@ -363,4 +363,4 @@ document.addEventListener("DOMContentLoaded", function () {
     mainContent.style.display = "block";
   });
 });
-</script>
+</script> -->
