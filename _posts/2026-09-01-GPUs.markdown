@@ -8,12 +8,6 @@ summary: "Đi sâu vào kiến trúc phần cứng GPU, phân tích bottleneck v
 
 ---
 
-<figure>
-  <video controls width="100%">
-    <source src="{{ site.baseurl }}/assets/images/HappyBirthdayVideo.mp4" type="video/mp4">
-  </video>
-</figure>
-
 ## I. Introduction
 
 Cũng lâu rồi mình chưa viết bài viết nào. Gần nhất là một bài viết về TPUs, đó là một loại mạch tích hợp chuyên dụng do Google phát triển nhằm tăng tốc các tác vụ về AI. Nhân tiện đây, trong project đồ án của mình thì mình có host một model để Inference bằng RTX 3090 24GB và nó cũng chậm và mình tìm cách để tối ưu nó vì vậy cũng đã tìm hiểu một chút về cách tối ưu cũng như là kiến thức về mặt phần cứng GPUs. Cùng bắt đầu nha~.
