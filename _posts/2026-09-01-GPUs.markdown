@@ -8,6 +8,12 @@ summary: "Đi sâu vào kiến trúc phần cứng GPU, phân tích bottleneck v
 
 ---
 
+<figure>
+  <video controls width="100%">
+    <source src="{{ site.baseurl }}/assets/images/HappyBirthdayVideo.mp4" type="video/mp4">
+  </video>
+</figure>
+
 ## I. Introduction
 
 Cũng lâu rồi mình chưa viết bài viết nào. Gần nhất là một bài viết về TPUs, đó là một loại mạch tích hợp chuyên dụng do Google phát triển nhằm tăng tốc các tác vụ về AI. Nhân tiện đây, trong project đồ án của mình thì mình có host một model để Inference bằng RTX 3090 24GB và nó cũng chậm và mình tìm cách để tối ưu nó vì vậy cũng đã tìm hiểu một chút về cách tối ưu cũng như là kiến thức về mặt phần cứng GPUs. Cùng bắt đầu nha~.
@@ -21,7 +27,7 @@ Cũng lâu rồi mình chưa viết bài viết nào. Gần nhất là một bà
 Bắt đầu tìm hiểu với NVIDIA, trước hết mình sẽ nói về một máy chủ NVIDIA GB200 NVL72. Vì nó gần như là mới nhất hiện nay cũng như có thể bao được các kiến thức về các GPU đời cũ (dù cũng có nhiều phần thay đổi ví dụ như kiến trúc Blackwell so với Ampere, v.v).
 
 <figure>
-  <img src="/assets/images/GB200.jpg" alt="NVIDIA GB200 NVL72">
+  <img src="{{ site.baseurl }}/assets/images/GB200.jpg" alt="NVIDIA GB200 NVL72">
   <figcaption>Máy chủ NVIDIA GB200 NVL72 — Kiến trúc Blackwell, tích hợp 72 GPU kết nối qua NVLink.</figcaption>
 </figure>
 
@@ -45,7 +51,7 @@ Sẽ được xử lý bên phía CPU rồi đưa cho GPU thông qua đường N
 Tiếp theo đi sâu vào trong GPU của GB200. Như đã nói ở trên thì trong 1 GB 200 ta có 2 GPUs với kiến trúc Blackwell. Và mới đây, khi Apple công bố kiến trúc mới trên Apple M5 Ultra, ta thấy rằng họ có nhắc đến Quad-Die
 
 <figure>
-  <img src="/assets/images/quad_die_apple.jpg" alt="Quad Die Apple M5 Ultra">
+  <img src="{{ site.baseurl }}/assets/images/quad_die_apple.jpg" alt="Quad Die Apple M5 Ultra">
   <figcaption>Kiến trúc Apple M5 Ultra với Quad Die</figcaption>
 </figure>
 
@@ -330,7 +336,7 @@ Về việc Profiling GPU, ta có một bộ công cụ để bắt lỗi cuda �
 ### 6. Roofline Model: Compute-Bound or Memory-Bound Workloads
 
 <figure>
-  <img src="/assets/images/roofline_model.png" alt="Roofline Model">
+  <img src="{{ site.baseurl }}/assets/images/roofline_model.png" alt="Roofline Model">
   <figcaption>Roofline Model</figcaption>
 </figure>
 
