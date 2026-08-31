@@ -1,0 +1,9 @@
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+.git/
+.github/
+docker-compose*.yml
+Dockerfile*
+.dockerignore

@@ -20,7 +20,7 @@ plugins:
 markdown: kramdown
 highlighter: rouge
 kramdown:
-  input: kramdown
+  input: GFM
   math_engine: null
   math_engine_opts:
     preview: false

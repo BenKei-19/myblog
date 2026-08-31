@@ -1,0 +1,857 @@
+---
+layout: my-post
+title: "Demystifying AI System Performance: GPU Architecture, Profiling & Optimization"
+date: 2026-09-01
+summary: "Đi sâu vào kiến trúc phần cứng GPU, phân tích bottleneck và các phương pháp tối ưu hiệu năng cho hệ thống AI."
+---
+
+
+---
+
+## I. Introduction
+
+Cũng lâu rồi mình chưa viết bài viết nào. Gần nhất là một bài viết về TPUs, đó là một loại mạch tích hợp chuyên dụng do Google phát triển nhằm tăng tốc các tác vụ về AI. Nhân tiện đây, trong project đồ án của mình thì mình có host một model để Inference bằng RTX 3090 24GB và nó cũng chậm và mình tìm cách để tối ưu nó vì vậy cũng đã tìm hiểu một chút về cách tối ưu cũng như là kiến thức về mặt phần cứng GPUs. Cùng bắt đầu nha~.
+
+---
+
+## II. AI System Hardware Overview
+
+### 1. The CPU and GPU Superchip
+
+Bắt đầu tìm hiểu với NVIDIA, trước hết mình sẽ nói về một máy chủ NVIDIA GB200 NVL72. Vì nó gần như là mới nhất hiện nay cũng như có thể bao được các kiến thức về các GPU đời cũ (dù cũng có nhiều phần thay đổi ví dụ như kiến trúc Blackwell so với Ampere, v.v).
+
+<figure>
+  <img src="/assets/images/GB200.jpg" alt="NVIDIA GB200 NVL72">
+  <figcaption>Máy chủ NVIDIA GB200 NVL72 — Kiến trúc Blackwell, tích hợp 72 GPU kết nối qua NVLink.</figcaption>
+</figure>
+
+Hình ở trên đó chính là về kiến trúc của NVIDIA GB200 NVL72, mỗi GB200 Superchip trong đó sẽ có 1 Grace CPU và 2 GPU kiến trúc Blackwell.
+
+Vậy cái này có gì đặc biệt? Như máy laptop bình thường của tôi, CPU và GPU không có connect trực tiếp. Trong đó CPU có Memory riêng của CPU (RAM), và GPU có Memory riêng của GPU (HBM/ VRAM / DRAM). Và nếu như GPU cần dữ liệu ở RAM, các bước của nó sẽ là RAM -> COPY -> PCIe -> GPU -> HBM. Và để tránh qua quá nhiều bước như vậy thì GB200 giải quyết bằng cách cho Grace CPU connect trực tiếp đến GPU thông qua NVLINK-C2C thay vì PCIe. Điều này giúp tăng hiệu năng vận chuyển dữ liệu vì PCIe Gen5 x16 có khoảng 64 GB/s mỗi chiều, còn NVLINK-C2C khoảng 900 GB/s.
+
+Tiếp theo là trong GB200, có thêm Cache Coherence giữa CPU Và GPU.
+Ví dụ như: CPU thay X = 20 => GPU cũng thấy luôn mà không cần cơ chế copy. Cái này gọi là Unified Memory. Nhưng Unified Memory chỉ giúp programmer dễ hơn về correctness nhưng không giải quyết được về vấn đề performance. Vẫn phải quan tâm Data nên được đặt ở đâu? HBM hay LPDDR5X (RAM của CPU Grace) khi nào thì move.
+
+Trước hết đi sâu vào trong Grace CPU. Nhiệm vụ của Grace CPU thì làm gì?
+Các bước như:
+
+- Tokenizer
+- Preprocess
+- Prepare Data
+- Manage Memory v.v
+
+Sẽ được xử lý bên phía CPU rồi đưa cho GPU thông qua đường NVLINK. Bên cạnh những cái vừa liệt kê trên thì CPU launch GPU kernel nhanh hơn truyền thống 
+
+Tiếp theo đi sâu vào trong GPU của GB200. Như đã nói ở trên thì trong 1 GB 200 ta có 2 GPUs với kiến trúc Blackwell. Và mới đây, khi Apple công bố kiến trúc mới trên Apple M5 Ultra, ta thấy rằng họ có nhắc đến Quad-Die
+
+<figure>
+  <img src="/assets/images/quad_die_apple.jpg" alt="Quad Die Apple M5 Ultra">
+  <figcaption>Kiến trúc Apple M5 Ultra với Quad Die</figcaption>
+</figure>
+
+Gần gần giống như thế, trong GPU của GB200, họ sử dụng "Dual-Die" GPU. Theo mình tìm hiểu thì khi họ muốn có nhiều hơn 200B Transistors, họ gặp khó khăn khi nhét hơn 200B Transistors vào 1 bo mạch, vì vậy họ làm ra 2 cái trong đó mỗi cái có hơn 100B Transistors, và lúc này cũng có đường kết nối giữa 2 Die với nhau và họ gọi đó là NVLINK High-Bandwidth Interface (10 TB/s). Về mặt vật lý thì đó đúng là ghép 2 GPU vào thật, nhưng họ muốn coi nó là 1 bằng cách cung cấp cho hai Die bằng NVLINK High-Bandwidth có băng thông cực lớn.
+
+
+### 2. GPU Tensor Cores and Transformer Engine
+
+Tiếp theo, trong GPU, có các nhân gọi là Tensor Cores cũng như là Transformer Engine. Vậy mục đích chính của nó là gì?
+
+1\. Trước hết là về Tensor Cores: Thì đây là phần cứng chuyên để tính toán các matrix multiplication cực nhanh. (Thực tế trong GPU có các cores khác nữa ví dụ như Cuda Cores, bạn hãy tưởng tượng như Cuda Cores giống như một vị giáo sư cái gì cũng biết làm, còn Tensor Cores là chuyên biệt cho phép nhân ma trận thôi). Và nó không chỉ làm trên các phép toán FP32, mà nó còn hỗ trợ thêm các kiểu khác nữa ví dụ như: FP16, BF16, TF32, FP8, INT8, v.v. Rất tốt khi không có đủ phần cứng, ta thường tìm đến các model có Quantization ví dụ như AWQ, GPTQ để có thể load vừa VRAM.
+
+2\. Tiếp theo là về Transformer Engine: Transformer Engine hỗ trợ quản lý precision và scaling cho tensor. Nó giúp dùng FP8/low precision một cách an toàn thay vì ép toàn bộ model xuống FP8. Mục tiêu là tận dụng Tensor Cores tốt hơn → nhanh hơn và tiết kiệm memory/bandwidth hơn. Đặc biệt hơn, đối với các dòng có kiến trúc Blackwell có hỗ trợ thêm kiểu FP4. NVIDIA có một định dạng để hỗ trợ phần này gọi là NVFP4, nó kèm cả scaling/calibration để làm low-precision arithmetic thực tế hơn.
+
+### 3. Streaming Multiprocessor, Threads, and Warps
+
+1\. Trong GPU, không phải có một core khổng lồ, GPU có nhiều bộ xử lý tính toán bên trong GPU gọi là Streaming Multiprocessor (SM). Các phép tính chủ yếu được thực hiện ở SM này, bên trong các SM, có một số những cái quan trọng mà mình sẽ giải thích ở phía bên dưới ví dụ như
+
+- Cuda / Arithmetic units
+- Tensor Cores
+- Load/Store units
+- Special Function Units
+- Register
+- L1 cache
+- Shared Memory
+
+Sau này, khi đọc một số thông số khi profiling GPU, ta sẽ có một số thông tin ví dụ như SM utilization nghĩa là đang nói: Trong khoảng thời gian GPU đang chạy, các SM có công việc chạy hay không và chạy trong bao lâu?
+
+Về việc hỗ trợ tính toán, trong SM, ngoài Cuda Cores và Tensor Cores ra, thì có nhiều loại Execution Unit khác ví dụ như FP32 units, INT32 units, FP8 v.v. Điều này cũng rất quan trọng, vì khi profiling sâu vào 1 kernel, bạn không chỉ hỏi là GPU utilization bao nhiêu mà còn phải hỏi: Kernel đang dùng loại execution unit nào? Vì Marlin (một kernel dùng để chạy cho các model có quantization) có hành vi rất khác so với FlashAttention (Nó không làm giảm số phép tính phải tính, nó làm giảm việc đọc ghi dữ liệu giữa HBM và on-chip SRAM bằng cách chia nhỏ Attention thành các block và thực hiện tính toán ngay trên block đó)
+
+2\. Có lẽ các bạn đã nghe đến thread ví dụ như kiểu multithreading đúng không. Trong GPU cũng có cái đó, nhưng GPU không chạy thread hoàn toàn độc lập, GPU gom 32 threads thành 1 warp và 1 warp này thường thực thi cùng một instruction (Single Instruction Multiple Thread) (SIMT).
+
+### 4. Ultrascale Networking — Treating Many GPUs as One
+
+Ở trên đó là sơ bộ qua trong GPU có những gì, trong thực tế, đối với các data center, nơi có rất nhiều GPU, họ còn phải đối mặt với một bài toán nữa đó là data được truyền giữa các GPU như thế nào? Ví dụ: khi model quá lớn, không thể nhét vừa 1 GPU, việc các model phải load các layer của nó trên nhiều GPU với nhau là điều cần phải làm, và giả sử như việc GPU1 cần data của GPU0, và mình phải truyền data đó (ví dụ như các phép toán AllGather, AllReduce) cũng có thể trở thành 1 bottleneck. Ví dụ dưới đây là của GB200 NVL72, có 72 GPUs trong đó. Họ xử lý bài toán này bằng cách trong mỗi GPU có 18 links bidirectional 100GB/s. Mỗi link của 1 GPU cắm với 1 switch nên sẽ có 18 switch, sau này GPU0 cần connect với GPU thứ 71 thì chỉ có đi qua 1 switch thôi => tiết kiệm thời gian. Và như đã nói ở trên, CPU Grace và Blackwell GPU được nối với nhau qua NVLINK-C2C và có cơ chế cache coherent. Nhưng khi connect giữa các GPU thì không. Và software sẽ đảm bảo GPU0 và GPU1 đồng bộ với nhau.
+
+Và để cho nhanh hơn nữa, NVIDIA đưa một phần phép tính vào chính network switch luôn. Mình sẽ ví dụ dưới đây:
+Giả sử có 72 GPU, các GPU phải thường xuyên làm collective operation (All-Reduce). Hiện tại GPU0 đang lưu giá trị 10, GPU1 lưu giá trị 20, GPU2 lưu giá trị 30, và GPU3 lưu 40, giờ ta muốn sum lại và gửi cho tất cả GPU. Đối với cách bình thường GPU sẽ received data + add data + send data khá mất thời gian, thì NVIDIA đưa ra Sharp Engine đưa vào NVSWITCH, nghĩa là network switch không chỉ chuyển mà còn thực hiện một phần phép toán nữa.
+
+## III. GPU Architecture, CUDA Programming, and Maximizing Occupancy
+
+### 1. Understanding GPU Architecture
+
+Nếu như CPU tối ưu latency cho 1 thread thì GPU tối ưu cho throughput (xử lý thật nhiều công việc cùng một lúc). Một chương trình cuda cơ bản sẽ chạy như thế này:
+CPU Memory -> Copy -> GPU Memory -> launch kernel -> GPU xử lý -> Copy -> CPU memory. Trong GPU có rất nhiều SM, được thiết kế chạy nhiều threads/warps song song. Tùy như trong từng GPU, sẽ có giới hạn khác nhau. Trong SM, có một số những người ví dụ như người quản lý công việc ấy, gọi là Warps Scheduler, nó sẽ chọn ra warps nào đang ready và phát instruction của warp đó xuống execution pipelines.
+
+### 2. Threads, Warps, Blocks, and Grids
+
+Thread chính là đơn vị nhỏ nhất trong đây, nó như là 1 đơn vị công việc phải làm
+
+Dưới góc nhìn về phần cứng của GPUs, chúng ta có Warps: gồm 32 threads cùng chạy một instruction.
+
+Dưới góc nhìn về CUDA programmer, ta không quản lý từng warp đâu, ta sẽ quản lý grid, và trong grid đó có nhiều các thread block. Nói chung việc gom các thread sẽ có 2 góc nhìn, 1 góc nhìn dưới phần cứng, và 1 góc nhìn cho các cuda programmer.
+
+Đi sâu hơn nữa, ví dụ ta viết c[i] = a[i] + b[i], mỗi thread chạy instruction này nhưng với mỗi thread chạy với i khác nhau ví dụ thread 0 chạy với i = 0, v.v. CUDA Runtime và Framework hiện đại như Pytorch xử lý việc scheduling / distribution. Ví dụ như bạn nói" Tôi cần chạy 10.000 blocks", GPU sẽ tự quyết định block nào vào SM nào. Và thứ tự thực hiện các block không nhất thiết phải theo 0, 1, 2, 3 v.v mà có thể block 3 chạy trước, sau đó mới đến block 0. Nếu như dưới góc nhìn của phần cứng thì 32 threads = 1 warps thì đối với các developer, 1 block = 256 threads = 8 warps, các warps sẽ thực thi theo SIMT. Có một số điều bạn cần biết như giới hạn của một SM. Như vừa liệt kê ở trên, trong SM sẽ có một số giới hạn như sau mà bạn phải tính toán, và đương nhiên các giới hạn này phải cùng được xét đồng thời với nhau. Trong một SM sẽ có một số thứ hữu hạn như sau
+
+- Register (Đây là bộ nhớ riêng của từng thread, và nó bị giới hạn, nếu như việc mỗi thread dùng quá nhiều các register sẽ không được xếp vào SM nào cả => cũng sẽ báo lỗi)
+- Shared Memory (sẽ được nhắc đến ở dưới khi bạn tìm hiểu về hierarchy memory)
+- Threads/ SM (1 SM chỉ cung cấp tối đa x threads thôi, nếu block đó vượt quá x threads, không thể launch kernel -> báo lỗi)
+- Warps/SM (Một SM cũng được định mức tối đa bao nhiêu warps)
+- Blocks/SM (Một SM cũng được định mức tối đa bao nhiêu Blocks khi đang running)
+
+Ví dụ như nếu bạn khởi tạo 1 blocks có 1024 threads mà 1SM có tối đa 2048 threads và 32 blocks => 1SM sẽ có tối đa 2 blocks thôi khi chỉ nhìn vào điều kiện threads (chưa xét đến các limit về register và share memory). Việc cân nhắc xem bao nhiêu threads là hợp lí cũng sẽ được nhắc ở dưới.
+
+### 3. CUDA Programming Refresher
+
+Trước khi bắt đầu về CUDA Programming, ta sẽ nhắc lại một chút về Pointer, một cái khá là khó của các ngôn ngữ C/C++. Khi bạn đọc các ngôn ngữ như C, C++, ta thấy rằng có các dấu trông kinh dị như * và &. Cụ thể nó sẽ như này:
+
+1\. Về dấu "*", thực tế có 2 cách hiểu và đặt trong các trường hợp cụ thể:
+    - Trong khi khai báo, ví dụ như `int *p`; dấu * nói rằng p là một pointer (biến địa chỉ), trỏ tới biến có kiểu int.
+    - Trong khi sử dụng *p: lấy ra giá trị đang được lưu trong địa chỉ mà p trỏ tới
+
+Ví dụ: Khi khai báo int x = 5, thì giá trị 5 này sẽ được nằm đâu đó trong memory giả sử vị trí nó là 0xXYZ đi, thì p = 0xXYZ đó, còn *p chính là giá trị 5
+
+~~~ cpp
+int x = 5;
+int *p = &x;
+~~~
+
+Phép & chính là lấy địa chỉ của biến x ở trong memory thôi.
+
+Dưới đây là một ví dụ về code Cuda:
+
+~~~ cpp
+#include <iostream>
+
+const int N = 1000000;
+
+__global__ void addSequential(const float* A, const float* B, float* C, int N){
+    if(blockIdx.x == 0 && threadIdx.x == 0){
+        for(int i = 0; i < N; ++i){
+            C[i] = A[i] + B[i];
+        }
+    }
+}
+int main(){
+    float *h_A = nullptr;
+    float *h_B = nullptr;
+    float *h_C = nullptr;
+    cudaMallocHost(&h_A, N * sizeof(float));
+    cudaMallocHost(&h_B, N * sizeof(float));
+    cudaMallocHost(&h_C, N * sizeof(float));
+    for(int i = 0 ; i < N; ++i){
+        h_A[i] = float(i);
+        h_B[i] = float(i * 2);
+    }
+    float *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, N * sizeof(float));
+    cudaMalloc(&d_B, N * sizeof(float));
+    cudaMalloc(&d_C, N * sizeof(float));
+
+    cudaMemcpy(d_A, h_A, N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, N * sizeof(float), cudaMemcpyHostToDevice);
+
+
+    addSequential<<<1,1>>>(d_A, d_B, d_C, N);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cout << "Kernel launch error: "
+                << cudaGetErrorString(err) << std::endl;
+    }
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        std::cout << "Kernel execution error: "
+                << cudaGetErrorString(err) << std::endl;
+    }
+
+    cudaMemcpy(h_C, d_C, N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << h_C[0] << std::endl;
+    std::cout << h_C[N-1] << std::endl;
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+    cudaFreeHost(h_A);
+    cudaFreeHost(h_B);
+    cudaFreeHost(h_C);
+    return 0;
+}
+~~~
+
+Giải thích từng phần của đoạn code trên:
+
+**1. Kernel function - `addSequential`**
+
+~~~ cpp
+__global__ void addSequential(const float* A, const float* B, float* C, int N){
+    if(blockIdx.x == 0 && threadIdx.x == 0){
+        for(int i = 0; i < N; ++i){
+            C[i] = A[i] + B[i];
+        }
+    }
+}
+~~~
+
+Từ khóa `__global__` đánh dấu đây là một **kernel function** - hàm được gọi từ CPU (host) nhưng chạy trên GPU (device). Hàm này cộng từng phần tử của mảng A và B rồi lưu vào C. Tuy nhiên, ở đây ta cố tình chỉ cho **1 thread duy nhất** (thread 0 của block 0) thực hiện toàn bộ vòng lặp — đây là cách làm **tuần tự**, hoàn toàn không tận dụng được sức mạnh song song của GPU. Mục đích là để so sánh hiệu năng với phiên bản song song sau này.
+
+**2. Cấp phát Pinned Memory trên Host (CPU)**
+
+~~~ cpp
+float *h_A = nullptr;
+float *h_B = nullptr;
+float *h_C = nullptr;
+cudaMallocHost(&h_A, N * sizeof(float));
+cudaMallocHost(&h_B, N * sizeof(float));
+cudaMallocHost(&h_C, N * sizeof(float));
+~~~
+
+Thay vì dùng `malloc` hay `new` thông thường, ta dùng `cudaMallocHost` để cấp phát **pinned memory** (page-locked memory). Loại bộ nhớ này không bị hệ điều hành swap ra ổ cứng, giúp việc truyền dữ liệu giữa CPU ↔ GPU (qua PCIe bus) nhanh hơn đáng kể so với bộ nhớ thông thường (pageable memory). Các biến có tiền tố `h_` là quy ước đặt tên cho biến phía **host** (CPU).
+
+**3. Cấp phát bộ nhớ trên Device (GPU)**
+
+~~~ cpp
+float *d_A, *d_B, *d_C;
+cudaMalloc(&d_A, N * sizeof(float));
+cudaMalloc(&d_B, N * sizeof(float));
+cudaMalloc(&d_C, N * sizeof(float));
+~~~
+
+`cudaMalloc` cấp phát bộ nhớ trên **Global Memory** của GPU. Các biến có tiền tố `d_` là quy ước cho biến phía **device** (GPU). Lưu ý rằng con trỏ `d_A` nằm trên CPU nhưng **trỏ tới vùng nhớ trên GPU** — CPU không thể truy cập trực tiếp vùng nhớ này.
+
+**4. Copy dữ liệu từ Host → Device**
+
+~~~ cpp
+cudaMemcpy(d_A, h_A, N * sizeof(float), cudaMemcpyHostToDevice);
+cudaMemcpy(d_B, h_B, N * sizeof(float), cudaMemcpyHostToDevice);
+~~~
+
+Trước khi GPU có thể tính toán, ta cần copy dữ liệu từ RAM (CPU) sang Global Memory (GPU) thông qua `cudaMemcpy`. Tham số `cudaMemcpyHostToDevice` chỉ định hướng copy: từ host sang device. Đây là một trong những bước tốn thời gian nhất vì dữ liệu phải đi qua PCIe bus.
+
+**5. Launch Kernel**
+
+~~~ cpp
+addSequential<<<1,1>>>(d_A, d_B, d_C, N);
+~~~
+
+Cú pháp `<<<numBlocks, threadsPerBlock>>>` là cách CUDA launch kernel lên GPU. Ở đây `<<<1,1>>>` nghĩa là chỉ dùng **1 block với 1 thread** — tức là chạy hoàn toàn tuần tự trên GPU, chẳng khác gì chạy trên CPU (thậm chí còn chậm hơn vì clock speed của GPU thấp hơn CPU). Trong thực tế, ta sẽ dùng nhiều blocks và threads hơn để tận dụng khả năng song song.
+
+**6. Error Handling**
+
+~~~ cpp
+cudaError_t err = cudaGetLastError();
+if (err != cudaSuccess) {
+    std::cout << "Kernel launch error: "
+            << cudaGetErrorString(err) << std::endl;
+}
+
+err = cudaDeviceSynchronize();
+if (err != cudaSuccess) {
+    std::cout << "Kernel execution error: "
+            << cudaGetErrorString(err) << std::endl;
+}
+~~~
+
+Vì kernel launch là **asynchronous** (CPU không đợi GPU chạy xong), ta cần kiểm tra lỗi ở 2 thời điểm:
+- `cudaGetLastError()`: kiểm tra lỗi ngay khi launch (ví dụ: cấu hình grid/block sai)
+- `cudaDeviceSynchronize()`: đợi GPU chạy xong và kiểm tra lỗi trong quá trình thực thi (ví dụ: truy cập bộ nhớ ngoài phạm vi)
+
+**7. Copy kết quả về Host và giải phóng bộ nhớ**
+
+~~~ cpp
+cudaMemcpy(h_C, d_C, N * sizeof(float), cudaMemcpyDeviceToHost);
+~~~
+
+Sau khi GPU tính toán xong, ta copy kết quả từ GPU về CPU bằng `cudaMemcpyDeviceToHost`. Cuối cùng, dùng `cudaFree` để giải phóng bộ nhớ trên GPU và `cudaFreeHost` để giải phóng pinned memory trên CPU. Việc giải phóng bộ nhớ đúng cách rất quan trọng để tránh memory leak, đặc biệt khi chạy nhiều kernel liên tiếp.
+
+### 4. Understanding GPU Memory Hierarchy
+
+Khi nhắc đến GPU Hierarchy thì sẽ có một số những phần như sau:
+
+- Register
+- Shared Memory + L1 cache
+- L2 Cache
+- Global Memory (HBM)
+
+1\. Register
+
+Đây là phần gần với thread nhất, vì là gần nhất nên tốc độ truy xuất trong register nhanh hơn nhiều so với các loại bộ nhớ khác, mỗi thread sẽ có một số register riêng, register này phục vụ cho thread đó, và thực tế thì thread này không thể đọc register ở thread khác (nhưng vẫn có một vài cái hỗ trợ trao đổi thông tin các thread ví dụ như shuffle trong 1 warp, còn thread ở warp A trực tiếp muốn lấy data ở register của thread ở warp B thì không). Vậy thì việc bao nhiêu register là hợp lý? Nếu có quá ít register thì GPU sẽ bị Underutilization, nghĩa là GPU mạnh đấy nhưng việc thì không có nhiều ấy. Còn nếu có quá nhiều register thì có thể rơi vào trường hợp SM không có đủ register, lúc này register sẽ bị spill xuống Global Memory, lúc này quá trình lấy data sẽ bị tăng lên vì đường đi từ các ALU đến Global Memory nó khá là lâu. Trường hợp bị spill như này thì sẽ gọi là Local Memory.
+
+2\. Tiếp theo là đến Shared Memory + L1 Cache
+
+1 SM sẽ giới hạn ví dụ L1 + Shared Memory là bao nhiêu đó, ví dụ như L1 + Shared Memory = 256KB chẳng hạn, trong đó một vài GPU thì shared memory có thể cấu hình lên 227KB. Tốc độ của Shared Memory/ L1 cache sẽ chậm hơn so với register vì nó ở xa hơn, nhưng đương nhiên nó sẽ nhanh hơn L2 cache cũng như là Global Memory. Shared memory được sử dụng cho các block. Như đã nói ở trên, khi code bằng cuda, các bạn có khai báo số thread per block cũng như số block, thì Shared memory này được sử dụng cho các thread truy cập trong cùng 1 block.
+
+Thực tế hơn nữa, trong shared memory, được chia nhỏ ra thành các bank (thường là 32 banks). Vì vậy, trong trường hợp các thread truy cập vào shared memory và cùng truy cập vào cùng 1 bank thì điều này có thể dẫn tới việc truy xuất không còn là song song nữa mà là tuần tự. Bạn cứ tưởng tượng như là một quầy thu ngân có 32 cửa số, có 100 vị khách, mà 100 vị khách đó đều tập trung ở quầy số 0 thì việc xử lý sẽ trở thành tuần tự. Vì vậy việc thiết kế thread block để tránh bank conflict mới là mục tiêu chính để có thể đạt được throughput cao. Và trong 1 bank đó có nhiều địa chỉ chứ không phải 1 địa chỉ nha, nếu như việc 32 thread đều truy cập cùng 1 địa chỉ, GPU có cơ chế broadcast giá trị cho cả warp luôn.
+
+3\. Đối với L2 cache 
+
+Đây là bộ nhớ được shared giữa các SM, tùy các GPU sẽ có giới hạn riêng cho L2 cache.
+
+4\. Global memory
+
+Đây chính là nơi mà các bạn hay gọi là VRAM, cũng là khi bạn load các weight model sẽ load lên đây. Ở global memory sẽ có bộ nhớ lớn hơn nhưng vì nó đặt xa ở các Cores tính toán nên việc lấy dữ liệu ở đây nó cũng sẽ lâu hơn.
+
+Với 4 cái mà mình vừa liệt kê ở trên thì có hai điều ta cần xét:
+- Về mặt tốc độ truy xuất: Register > Shared Memory/L1 Cache > L2 Cache > Global Memory
+- Về mặt bộ nhớ: Register < Shared Memory/L1 cache < L2 Cache < Global Memory
+
+Tiếp theo, tôi sẽ nói về Unified Memory:
+
+Bình thường, CPU và GPU sẽ có bộ nhớ riêng, ví dụ CPU sẽ là RAM còn GPU là VRAM, ta sẽ khởi tạo giá trị thì dùng CPU, khi cần tính toán song song sẽ copy từ RAM vào VRAM. Unified Memory muốn làm việc này đơn giản hơn. Nghĩa là cả GPU và CPU cùng lấy được data giống nhau mà không cần software phải update. Không phải cả 2 cùng trỏ vào 1 phần bộ nhớ đâu, chỉ là nó có cơ chế di chuyển từ CPU đến GPU thôi. Lúc vận chuyển như vậy gọi là page migration, lúc không có data là page fault. Việc vận chuyển data như vậy có thể là nguyên nhân gây ra stall. Ta có thể tránh nó bằng cách nói với cuda rằng, tôi sắp dùng đống data này, bạn hãy chuyển nó sang GPU dần trước đi.
+
+### 5. Maintaining High Occupancy and GPU Utilization
+
+Sau khi tìm hiểu được về kiến trúc của GPU cũng như là phân tầng bộ nhớ trong memory, ta tiếp tục làm quen với một thuật ngữ nữa là Occupancy. Occupancy thực tế đang nói rằng, trong 1 SM có tối đa X warps, thì workload của mình đang sử dụng được bao nhiêu phần trăm trên tổng số warps đang có trong 1 SM. Vậy tại sao ta lại phải quan tâm đến Occupancy. Thực tế, không phải warp nào cũng sẵn sàng để chạy các phép tính toán, có những warp trong nhiều cycles phải đợi lấy data từ Shared Memory/L2 Cache/ Global Memory nên phải đợi rất lâu, trong lúc đó, Scheduler của SM có thể chạy các Warps khác để che đi warp đang phải đợi data từ đâu đó. Việc này gọi là latency hiding. Nếu Occupancy thấp quá giả sử có 4 warps chạy trong 1 SM thôi, nếu cả 4 warps đó đều đang đợi data thì việc này làm lãng phí.
+
+Vậy thì việc Occupancy đạt tối đa 100% mới là tốt à. Thực tế thì không phải, cái Occupancy này chỉ cần đủ để có thể hide latency của các warps phải đợi memory thôi, không nhất thiết phải đạt đến 100% mới là tốt. Còn làm sao để Tuning Occupancy để nó tốt thì mình sẽ có một bài khác để giải thích cái này, trước hết mình sẽ chỉ nói qua một vài phương pháp.
+
+1\. Với đoạn code ví dụ ở trên, bạn thấy khi launch một kernel, ta sẽ phải khai báo số thread trên 1 block và số block. Mình có thể tinh chỉnh cái thread đó để có thể khi scheduler phân các block vào các SM thì sẽ phần được nhiều hơn => đồng nghĩa với việc nhiều warp hơn trong SM vì thế xác suất hide được latency sẽ cao hơn.
+
+2\. Ta có thể sử dụng hàm `__launch_bounds__ (256, 16)` cái này giống như nói với Compiler: Ê bạn ơi, tôi muốn kernel này có khả năng chạy với tối đa 256 thread trên 1 block và tôi muốn bạn cố gắng cho ít nhất 16 blocks resident trên mỗi SM.
+
+Việc giới hạn register đối với mỗi thread cũng có thể gián tiếp giúp tăng Occupancy, nhưng không phải là không có trade off. Nếu một thread thật sự cần đến 100 register mà bạn ép xuống còn 64, thì lúc này sẽ bị spill ra Local Memory, điều này khiến cho việc truy xuất tốc độ lấy data để tính toán sẽ bị nâng lên đấy.
+
+Về việc Profiling GPU, ta có một bộ công cụ để bắt lỗi cuda ở runtime, đặc biệt là những lỗi do hàng nghìn GPU threads chạy song song gây ra. Sẽ có 4 loại tool:
+
+- Memcheck (có truy cập sai memory không)
+- Racecheck (các thread có tranh chấp dữ liệu không)
+- Initcheck (có đọc memory chưa được khởi tạo không)
+- Synccheck (các thread có đồng bộ đúng không)
+
+### 6. Roofline Model: Compute-Bound or Memory-Bound Workloads
+
+<figure>
+  <img src="/assets/images/roofline_model.png" alt="Roofline Model">
+  <figcaption>Roofline Model</figcaption>
+</figure>
+
+1\. Đầu tiên Roofline Model dùng để làm gì?
+
+Nó trả lời một câu hỏi rất quan trọng khi tối ưu GPU: `Kernel của tôi đang bị giới hạn bởi Memory hay bởi Compute? `
+Tức là:
+- GPU có sức mạnh tính toán rất nhanh nhưng do data không đến đủ nhanh để làm việc đó -> Memory-Bound.
+- GPU có đủ dữ liệu nhưng không tính toán kịp -> Compute bound.
+Nhìn vào Roofline Model thì ta sẽ thấy được điều đó.
+
+2\. Trục hoành - Arithmetic Intensity
+
+Nó trả lời cho câu hỏi: Mỗi 1 Byte dữ liệu tôi lấy từ memory về thì tôi thực hiện được bao nhiêu phép tính
+
+Công thức:
+
+$$\boxed{\text{AI (Arithmetic Intensity)} = \frac{\text{FLOPs}}{\text{Bytes Transferred}}}$$
+
+Ví dụ như AI = 0.1 FLOP/Byte thì ta biết rằng rất ít compute, nhiều memory, còn nếu 100 FLOP/Byte thì rất nhiều Compute.
+
+3\. Trục tung
+
+Trục tung biểu diễn Performance đạt được (GFLOP/s hoặc TFLOP/s). Đường ngang trên cùng chính là Peak Compute của GPU.
+
+4\. Đường chéo màu tím — Memory Bandwidth Limit
+
+Đây là phần quan trọng nhất. Đường chéo màu tím có nhãn **Bandwidth GB/s**, nó biểu diễn giới hạn do memory bandwidth.
+
+Công thức:
+
+$$P_{\text{memory}} = BW \times AI$$
+
+Ví dụ GPU có $BW = 1{,}000\ \text{GB/s}$, kernel có $AI = 2\ \text{FLOP/Byte}$, thì giới hạn do memory là:
+
+$$P = 1000 \times 2 = 2000\ \text{GFLOP/s} = 2\ \text{TFLOP/s}$$
+
+5\. Tại sao nó là đường chéo?
+
+Vì $P = BW \times AI$. Nếu bandwidth cố định ($BW = 1000$), thì:
+
+| AI (FLOP/Byte) | Memory-limited Performance |
+|---|---|
+| 1 | 1 TFLOP/s |
+| 2 | 2 TFLOP/s |
+| 4 | 4 TFLOP/s |
+| 8 | 8 TFLOP/s |
+| 16 | 16 TFLOP/s |
+
+AI tăng bao nhiêu → performance giới hạn bởi memory tăng bấy nhiêu. Vì vậy nó tạo thành **đường thẳng đi lên** trên đồ thị log-log.
+
+6\. Đường ngang màu hồng — Peak FLOP/s
+
+Đường màu hồng là **Peak FLOP/s** — giới hạn compute tối đa của GPU. Ví dụ GPU có peak $100\ \text{TFLOP/s}$ thì dù kernel có làm nhiều phép tính đến đâu, nó cũng không thể vượt quá:
+
+$$P \leq \text{Peak FLOP/s}$$
+
+7\. Hai giới hạn kết hợp với nhau — chính là Roofline
+
+Performance tối đa của kernel:
+
+$$\boxed{P \leq \min(BW \times AI,\ \text{Peak FLOP/s})}$$
+
+Tức là performance bị chặn bởi cái nào thấp hơn. 
+
+Đường chéo $BW \times AI$ và đường ngang Peak FLOP/s — lấy đường thấp hơn chính là hình dạng Roofline.
+
+8\. Ridge Point — Điểm giao nhau cực kỳ quan trọng
+
+Trong hình có đường xanh lá đứng, đó là **Ridge Point**. Nó là điểm mà:
+
+$$BW \times AI = \text{Peak FLOP/s}$$
+
+Suy ra:
+
+$$\boxed{AI_{\text{ridge}} = \frac{\text{Peak FLOP/s}}{BW}}$$
+
+Ví dụ GPU có $\text{Peak} = 100\ \text{TFLOP/s}$, $BW = 1\ \text{TB/s}$, thì:
+
+$$AI_{\text{ridge}} = \frac{100\ \text{TFLOP/s}}{1\ \text{TB/s}} = 100\ \text{FLOP/Byte}$$
+
+9\. Bên trái Ridge Point = Memory-bound (Bandwidth-bound)
+
+Ví dụ kernel có $AI = 10$ nhưng ridge point ở $AI = 100$, thì $10 < 100$ → kernel nằm bên trái ridge point. Khi đó:
+
+$$P \approx BW \times AI$$
+
+Performance bị giới hạn bởi memory bandwidth. Muốn tối ưu thì tập trung vào:
+
+- Giảm số Byte đọc/ghi
+- Memory coalescing
+- Cache reuse
+- Shared memory
+- Kernel fusion
+- Giảm HBM traffic
+- Tăng data reuse
+
+10\. Bên phải Ridge Point = Compute-bound
+
+Ví dụ kernel có $AI = 200$ và $AI_{\text{ridge}} = 100$, thì $200 > 100$ → kernel nằm bên phải ridge point. Khi đó $BW \times AI > \text{Peak FLOP/s}$, memory đã đủ nhanh rồi, GPU bị giới hạn bởi Peak FLOP/s. Muốn tối ưu thì tập trung vào:
+
+- Giảm số phép tính
+- Tensor Core
+- Tăng instruction throughput
+- Giảm instruction overhead
+- Tăng occupancy nếu cần để hide latency
+- Tối ưu instruction mix
+- Dùng FP16/BF16/TF32 phù hợp
+- Tăng sử dụng các execution units
+
+---
+
+## IV. Profiling and Tuning GPU Memory Access Patterns
+
+Đến đoạn này, sẽ đi sâu hơn vào một số cách để đọc memory hiệu quả hơn.
+
+### 1. Coalesced vs Uncoalesced Global Memory Access
+
+Trước hết ta nên biết được trong warps có 32 threads thì chúng đọc memory như thế nào?
+
+Giả sử ta có `float x[]`, mỗi float có 4 bytes, một warp có 32 threads trong đó:
+- Thread 0: Đọc x[0]
+- Thread 1: Đọc x[1]
+- ...
+- Thread 31: đọc x[31]
+
+Vì bản chất việc khai báo trong C/C++, các float sẽ là các số đứng liên tiếp nhau trong ô nhớ, nên khi 1 warp truy cập như thế kia, GPU sẽ thấy là cả warp đang cần một vùng memory liên tục là 4 Bytes * 32 = 128B. Lúc này nó sẽ gom các request đó thành 1 lượng transaction nhỏ gọi là `Coalesced Memory`  
+
+Vậy nếu việc các thread đọc cách nhau thì sao? Ví dụ như:
+`out[idx] = in[idx * stride]`  giả sử với stride = 2
+
+Lúc này :
+- Thread 0: Đọc x[0] (Giả sử address của x[0] ở vị trí 0)
+- Thread 1: Đọc x[2] (Ở address 8)
+- ...
+
+Lúc này gọi là Strided Access.
+
+Thực tế, cả warp chỉ cần 128 bytes nhưng vì vị trí không liên tiếp, điều này dẫn đến việc data fetch sẽ phải lớn hơn 128 bytes => điều này dẫn tới bandwidth bị lãng phí. Như vừa mới giới thiệu Roofline ở trên, việc lãng phí bandwidth sẽ làm cho GPU không tận dụng được sức mạnh tính toán của nó.
+
+Vậy làm sao lại bị lãng phí, chúng ta phải đi sâu hơn vào Cache Line và Sector.
+
+1\. Cache Line:
+
+Mặc dù bộ nhớ được đánh địa chỉ theo từng byte, việc truy cập từng byte riêng lẻ sẽ không hiệu quả. Vì vậy, hệ thống bộ nhớ thường đọc và lưu trữ dữ liệu theo các khối lớn hơn gọi là cache line. Trên nhiều GPU NVIDIA, một cache line có kích thước 128 byte. Để tránh phải luôn xử lý toàn bộ 128 byte khi chỉ cần một phần nhỏ dữ liệu, cache line được chia thành 4 sector 32 byte, cho phép quản lý dữ liệu chi tiết và hiệu quả hơn.
+
+2\. Transaction:
+
+Một transaction là một lần hardware thực hiện việc chuyển một "khối dữ liệu" giữa các tầng của memory hierarchy để phục vụ các memory request.
+
+Ví dụ dễ nhất, giả sử một warp có 32 threads:
+
+~~~
+T0  → A[0]   4B
+T1  → A[1]   4B
+T2  → A[2]   4B
+...
+T31 → A[31]  4B
+~~~
+
+Tổng dữ liệu mà cả warp cần: $32 \times 4 = 128B$. Các địa chỉ nằm liên tiếp:
+
+~~~
+        128 bytes
+┌────────────────────────────────────────────┐
+│ T0 T1 T2 ... T31                           │
+└────────────────────────────────────────────┘
+~~~
+
+Hardware nhìn vào toàn bộ các request của warp, rồi coalesce chúng. Nếu pattern phù hợp, nó có thể phục vụ bằng một transaction 128B ở một tầng memory cụ thể.
+
+Ví dụ access aligned — vẫn rất đẹp:
+
+~~~
+T0  → byte 0
+T1  → byte 4
+...
+T31 → byte 124
+~~~
+
+Chúng nằm trong cùng vùng 128B → chỉ cần 1 transaction.
+
+Nhưng nếu warp bắt đầu ở địa chỉ lệch:
+
+~~~
+T0  → byte 4
+T1  → byte 8
+...
+T31 → byte 128
+~~~
+
+Lúc này request đã trải qua ranh giới 128B:
+
+~~~
+128B line                    128B line
+┌───────────────────┐       ┌───────────────────┐
+│                   │       │                   │
+│       ...         │       │                   │
+│ T0 ... T30        │ T31 → │                   │
+└───────────────────┘       └───────────────────┘
+~~~
+
+Hardware có thể cần nhiều transaction hơn để lấy đủ dữ liệu. Đây chính là lý do tại sao misaligned access làm giảm hiệu năng — nó buộc GPU phải fetch nhiều cache line hơn mức cần thiết.
+
+Tiếp theo, việc cấu trúc struct trong khi code cũng là một điều đáng chú ý, chúng ta có 2 phần như sau:
+
+- Array of structures (AoS) ví dụ như
+
+~~~ cpp
+struct node{
+    int a;
+    int b;
+    float c;
+}arr[N];
+~~~
+
+Lúc này cấu trúc memory của nó trong bộ nhớ sẽ như thế này: 
+
+`a b c a1 b1 c1 a2 b2 c2 ... aN bN cN`.
+
+Nếu cấu trúc như này, mà 32 threads mỗi thread chỉ truy cập xử lý giá trị a => các giá trị a đang không nằm liên tiếp nhau có thể dẫn tới uncoalesced.
+
+Để xử lý vấn đề trên, ta có thêm một loại nữa:
+
+- Structure of Arrays (SoA):
+
+~~~ cpp
+struct node{
+    int a[N];
+    int b[N];
+    int c[N];
+}arr;
+~~~
+
+Lúc này thì cấu trúc của Memory khi viết như trên sẽ là: 
+
+`a a1 a2 ... aN b b1 b2 ... bN c c1 ... cN`
+
+Tùy theo workload của bạn mà hãy tổ chức cấu trúc struct cho tối ưu nhất có thể.
+
+### 2. Vectorized Memory Access
+
+Nếu như coalesced nói rằng mỗi thread nên truy cập memory như thế nào thì vectorized nói rằng trong mỗi thread nên lấy bao nhiêu data?
+
+Ở các ví dụ trước, là đang nói rằng 1 thread đang lấy 1 float, vectorize nói 1 thread lấy nhiều float 1 lượt luôn (trong cuda sẽ có kiểu float4).
+
+Việc vectorize giảm số instruction xuống, ví dụ Mỗi thread:
+
+~~~
+load float
+load float
+load float 
+load float
+~~~
+Điều này cần thực hiện 4 instruction load, nếu ta dùng vectorize thì chỉ cần 1 load instruction thôi.
+
+Và khi mình viết code thì mình cũng nên biết hardware thích xử lý memory theo những đơn vị nào rồi tổ chức access pattern để hardware có thể được làm việc thuận lợi nhất.
+
+### 3. Tiling and Data Reuse Using Shared Memory
+
+Tiếp theo sẽ nhắc về kỹ thuật tiling và sử dụng cùng với Shared Memory trong bộ nhớ.
+
+Giả sử ta có bài toán $A \in \mathbb{R}^{1024 \times 1024}$, $B \in \mathbb{R}^{1024 \times 1024}$ và ta muốn tính tích $AB = C \in \mathbb{R}^{1024 \times 1024}$. Ta muốn mỗi thread sẽ tính một giá trị $C_{ij}$:
+
+$$C_{ij} = \sum_{k=0}^{1023} A_{ik} \cdot B_{kj}$$
+
+Trước hết, để muốn tính được thì việc load memory cũng khá là cực đó, bên cạnh đó ta nhìn thấy rằng giả sử ta muốn tính $C_{i,\,j+1}$ thì
+
+$$C_{i,\,j+1} = \sum_{k=0}^{1023} A_{ik} \cdot B_{k,\,j+1}$$
+
+nhìn thấy không, ta đều sử dụng $A_{ij}$ cho việc tính các giá trị của ma trận $$C$$, lúc này nếu như việc reuse tốt thì sẽ rút gọn được thời gian lấy memory đấy. Lúc này tiling ra đời, ý tưởng là load 1 nhóm data từ global memory vào shared memory 1 lần, sau đó nhiều thread cùng reuse data đó.
+~~~ cuda
+#include <iostream>
+#define TILE_SIZE 32
+#include <cuda_runtime.h>
+const int N = 1024;
+using namespace std;
+__global__ void tiledMatMul(const float* __restrict__ A, const float* __restrict__ B, float* C, int N){
+    __shared__ float sA[TILE_SIZE][TILE_SIZE];
+    __shared__ float sB[TILE_SIZE][TILE_SIZE];
+
+    int row = blockIdx.x * TILE_SIZE + threadIdx.x;
+    int col = blockIdx.y * TILE_SIZE + threadIdx.y;
+    float sum = 0.0f;
+    for(int t = 0 ; t < N; t += TILE_SIZE){
+        if(row < N && (t + threadIdx.x) < N){
+            sA[threadIdx.y][threadIdx.x] = A[row * N + t + threadIdx.x];
+        }else {
+            sA[threadIdx.y][threadIdx.x] = 0;
+        }
+        if ((t + threadIdx.y) < N && col < N) {
+            sB[threadIdx.y][threadIdx.x] = B[(t + threadIdx.y) * N + col];
+        } else {
+            sB[threadIdx.y][threadIdx.x] = 0.0f;
+        }
+        __syncthreads();
+
+        for(int k = 0 ; k < TILE_SIZE; ++k){
+            sum += sA[threadIdx.y][k] * sB[k][threadIdx.x];
+        }
+        __syncthreads();
+    }
+    if(row < N && col < N){
+        C[row * N + col] = sum;
+    }
+}
+signed main(){
+    size_t bytes = N * N * sizeof(float);
+
+    float* h_A = nullptr;
+    float* h_B = nullptr;
+    float* h_C = nullptr;
+    cudaMallocHost(&h_A, bytes);
+    cudaMallocHost(&h_B, bytes);
+    cudaMallocHost(&h_C, bytes);
+    for (int i = 0; i < N * N; ++i) { 
+        h_A[i] = 1.0f; h_B[i] = 1.0f;
+    }
+    float *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, bytes);
+    cudaMalloc(&d_B, bytes);
+    cudaMalloc(&d_C, bytes);
+    cudaMemcpy(d_A, h_A, bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, bytes, cudaMemcpyHostToDevice);
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (N + TILE_SIZE - 1) / TILE_SIZE);
+    tiledMatMul<<<grid, block>>>(d_A, d_B, d_C, N);
+    cudaDeviceSynchronize();
+    cudaFree(d_A); 
+    cudaFree(d_B); 
+    cudaFree(d_C);
+    cudaFreeHost(h_A); 
+    cudaFreeHost(h_B); 
+    cudaFreeHost(h_C);
+    return 0;
+}
+~~~
+
+### 4. Avoid Shared-Memory Bank Conflicts
+
+Như đã nói ở trên thì trong shared memory, được chia thành 32 bank nhỏ,
+Ví dụ như sau
+~~~
+arr[0] -> bank 0
+arr[1] -> bank 1
+...
+arr[31] -> bank 31
+arr[32] -> bank 0
+arr[33] -> bank 1 
+~~~
+
+Với quy tắc như trên, việc mapping lặp lại sau mỗi 128 bytes (hay là 32 lần 4 bytes) => điều này cho thấy rằng việc stride = 32 sẽ rất nguy hiểm
+
+Shared memory được thiết kế để nhiều thread trong 1 warp có thể truy cập nhiều bank cùng 1 lúc, nhưng nếu
+~~~
+Thread 0 -> Bank 0
+Thread 1 -> Bank 0
+....
+Thread 31 -> Bank 0
+~~~
+Điều này dẫn tới 32 way-conflict
+
+Lấy ví dụ cho code ở phía bên trên, giả sử `__shared__ float tile[32][32]`. Mỗi hàng có 32 floats thì lúc này bank của từng phần tử sẽ như thế này
+
+~~~
+row 0: [0] [1] ... [31]
+row 1: [0] [1] ... [31]
+row 2: [0] [1] ... [31]
+...
+~~~
+Vấn đề đặt ra ở đây nếu như đọc theo cột, ví dụ `a[i][0]` thì sẽ bị bank conflict. Vậy để giải quyết vấn đề này, ta có thể áp dụng 2 cách xử lý:
+
+- Padding, thay vì `__shared__ float tile[32][32]` ta có thể sửa thành `__shared__ float tile[32][33]`. Lúc này bank của từng phần tử sẽ như sau
+~~~
+row 0: [0] [1] ... [31] [0]
+row 1: [1] [2] ... [0] [1]
+row 2: [2] [3] ... [1] [2]
+...
+~~~
+Nếu truy cập vào các cột hay các hàng thì cũng không bị bank conflict nữa.
+- Cách thứ 2 ta sử dụng gọi là Swizzling đại khái ý tưởng nôm na của nó sẽ thay đổi cách dữ liệu được sắp xếp/ ánh xạ vào shared memory để các thread không cùng đập vào một bank. Khi đọc tôi thấy họ sử dụng các phép toán XOR, vì vấn đề độ dài nên có hứng thú thì các bạn cũng tự tìm hiểu phần này nhé.
+
+### 5. Warp Shuffle Intrinsics
+
+Nếu như mục trước nói: Nếu buộc phải dùng Shared Memory thì hãy thiết kế sao cho để tránh bank conflict, thì mục này sẽ nói đến: Nếu dữ liệu chỉ cần trao đổi giữa các thread trong cùng 1 warp thì đôi khi không cần đến share memory, cuda có hỗ trợ phương thức để trao đổi trực tiếp giữa các thread trong cùng 1 warp bằng shuffle.
+
+Cuda cung cấp phương thức `__shfl__sync()` cho phép làm điều đó. Cái này chỉ áp dụng cho các thread trao đổi trong cùng một warp thôi.
+
+Cụ thể hơn, giả sử:
+~~~
+Thread 0: val = 10
+Thread 1: val = 20
+Thread 2: val = 30
+...
+~~~
+Ta có `float x = __shfl_sync(mask, val, 0)` trong đó
+- Mask là khai báo thêm biến x ở những lane nào
+- val là biến val có lưu giá trị ở mỗi thread
+- 0: đang lấy giá trị val ở lane 0
+
+Đại khái, câu lệnh trên sẽ nói rằng, tôi muốn tạo thêm biến x ở các thread được nhắc đến trong mask, được gán giá trị chính là bằng giá trị của biến val ở trong lane 0.
+
+Hơn nữa, việc này cũng hỗ trợ reduction ngay bên trong register. Giả sử ở như trên, thread 0 giữ biến val có giá trị 10, thread 1 giữ biến val giá trị 20, v.v. Ta muốn tính tổng giá trị val nằm trong các thread. Ta có thể thực hiện reduction ngay trong thread này luôn. Ví dụ thông qua code dưới đây mà không cần thực hiện thông qua shared data:
+
+~~~ cuda
+    int mask = __activemask();
+    float val = threadVal();
+    for(int offset = 16; offset > 0; offset >>= 1){
+        float other = __shfl_down_sync(mask, val, offset);
+        val += other;
+    }
+~~~
+
+Vòng đầu tiên với offset = 16, hàm `__shfl_down_sync(mask, val, offset)` có nghĩa là thread hiện tại sẽ lấy val từ thread cách nó 16 lanes về phía dưới, nghĩa là:
+
+~~~
+T0 lấy val của T16: T0 = T0 + T16
+T1 lấy val của T17: T1 = T1 + T17
+...
+~~~
+Cứ tiếp tục vòng lặp như thế, cuối cùng tổng của các giá trị sẽ được tổng hợp ở thread 0 mà không cần phải đi qua shared memory
+
+### 6. Read-Only Data Caches
+
+Ở đoạn code viết kernel của tôi, tôi có viết là `const float* __restrict__ A`, điều này thực sự là gì?
+
+- Const ở đây nghĩa là nói với trình biên dịch rằng không được thay đổi các giá trị của A
+- restrict là nói rằng A sẽ không bị conflict với những cái khác, nghĩa là A không có trỏ chung vào 1 địa chỉ với ai khác cả
+
+Tại sao việc làm như này có thể tối ưu?. Giống như kiểu nếu biết thêm một số dữ kiện, thì compiler sẽ có thêm thông tin về memory. Điều này tận dụng cache được tốt hơn.
+
+### 7. Asynchronous Memory Prefetching and Tensor Memory Accelerator
+
+Như đã đề cập ở trên, việc trong lúc các cores đang tính toán, thì việc chuyển trước data, và khi cores tính xong thì dùng luôn data đó để tính mà không cần chờ nó chuyển data nữa. Đoạn này sẽ giúp bạn làm sao để làm điều đó.
+
+1\. TMA (Tensor Memory Accelerator)
+
+Nó là một hardware engine trên NVIDIA, dùng để di chuyển lượng lớn dữ liệu giữa Global Memory và Shared Memory một cách asynchronous. Điểm quan trọng là TMA hoạt động độc lập với các CUDA cores — nghĩa là trong lúc TMA đang copy data, các cores vẫn tính toán bình thường.
+
+2\. Double Buffering
+
+Ta sẽ dùng 2 buffer: 1 buffer để các cores tính toán, còn 1 buffer để lưu việc chuyển data tiếp theo dần dần. Điều này tránh trường hợp cores chưa tính xong với data cũ mà đã chuyển data mới đến ghi đè.
+
+Hình dung overlap giữa compute và memory transfer:
+
+~~~
+Time ──────────────────────────────────────────►
+
+Buffer A: [Load tile 0]            [Load tile 2]            [Load tile 4]
+Buffer B:              [Load tile 1]            [Load tile 3]
+Compute :              [Compute 0]  [Compute 1]  [Compute 2] [Compute 3]
+~~~
+
+Thay vì chạy tuần tự (load → đợi → compute → load → đợi → compute), compute và load chạy song song với nhau → tiết kiệm rất nhiều thời gian.
+
+3\. Pipeline Object — `cuda::pipeline`
+
+Khi dùng async copy, ta cần một cơ chế để đồng bộ giữa việc copy và tính toán. CUDA cung cấp `cuda::pipeline` với 3 thao tác chính:
+
+~~~ cuda
+// Bước 1: Gửi request copy cho TMA
+cuda::memcpy_async(
+    tiles[0],
+    global_ptr + 0 * TILE_SIZE,
+    cuda::aligned_size_t<32>{bytes},
+    pipe
+);
+
+// Bước 2: Báo hiệu đã gửi xong request
+pipe.producer_commit();
+
+// Bước 3: Đợi data copy xong rồi mới bắt đầu tính toán
+pipe.consumer_wait();
+
+// ... tính toán với tiles[0] ...
+
+// Bước 4: Báo buffer đã dùng xong, có thể ghi đè
+pipe.consumer_release();
+~~~
+
+Giải thích:
+
+- `producer_commit()`: Nói với pipeline rằng tôi đã gửi hết các request copy cho stage này rồi
+- `consumer_wait()`: Đợi cho đến khi TMA copy xong tất cả data trong stage này — chỉ sau bước này mới được đọc data
+- `consumer_release()`: Báo rằng tôi đã dùng xong data trong buffer này, TMA có thể ghi đè vào đây cho lần copy tiếp theo
+
+4\. So sánh Synchronous vs Asynchronous
+
+~~~
+Synchronous (không overlap):
+┌──────┐ ┌─────────┐ ┌──────┐ ┌─────────┐
+│ Load │→│ Compute │→│ Load │→│ Compute │→ ...
+└──────┘ └─────────┘ └──────┘ └─────────┘
+Tổng thời gian = Load + Compute + Load + Compute + ...
+
+Asynchronous (overlap):
+┌──────┐ ┌──────┐ ┌──────┐
+│Load 0│ │Load 1│ │Load 2│
+└──────┘ └──────┘ └──────┘
+         ┌─────────┐ ┌─────────┐ ┌─────────┐
+         │Compute 0│ │Compute 1│ │Compute 2│
+         └─────────┘ └─────────┘ └─────────┘
+Tổng thời gian ≈ max(Load, Compute) × N
+~~~
+
+Nếu thời gian load ≈ thời gian compute, async có thể nhanh gần gấp đôi so với sync.
+
+5\. Kiến trúc hỗ trợ
+
+Không phải GPU nào cũng hỗ trợ các tính năng này:
+
+- **Ampere (SM80+)**: Hỗ trợ `cp.async` — instruction cho phép copy async từ Global Memory đến Shared Memory mà không cần đi qua register
+- **Hopper (SM90+)**: Hỗ trợ TMA — hardware engine mạnh hơn, có thể xử lý cả multi-dimensional tensor copy, không chỉ 1D memcpy
+
+---
+
+
+**Reference**
+
+<!-- [Tên tài liệu](link) -->
+[AI Systems Performance Engineering: Optimizing Model Training and Inference Workloads with GPUs, CUDA, and PyTorch](https://www.amazon.com/Systems-Performance-Engineering-Optimizing-Inference/dp/B0F47689K8)
+
+---
+

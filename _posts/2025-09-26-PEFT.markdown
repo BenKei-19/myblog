@@ -1,6 +1,6 @@
 ---
 layout: my-post
-title: "Một số phương pháp để huấn luyện cũng như là sử dụng nếu như phần cứng không đủ đáp ứng trong AI (Part 2)"
+title: "Parameter-Efficient Fine-Tuning (PEFT) Part 2"
 date: 2025-09-26
 
 summary: "Giới thiệu một số cách để huấn luyện mô hình một cách hiệu quả, tiết kiệm VRAM hơn"
